@@ -45,6 +45,9 @@ type StockEntryDetailResponse = {
       item_code?: string;
       t_warehouse?: string;
       s_warehouse?: string;
+      custom_cops?: number;
+      custom_tare_weight?: number;
+      custom_gross_weight?: number;
     }>;
   };
 };
@@ -130,12 +133,15 @@ export default function StockPage() {
           if (itemWarehouse !== selectedWarehouse) return;
           if (!itemCode) return;
           const parsed = parseRemarks(entry.remarks);
+          const cops = firstItem?.custom_cops ?? parsed.cops;
+          const tare = firstItem?.custom_tare_weight ?? parsed.tare;
+          const gross = firstItem?.custom_gross_weight ?? parsed.gross;
           if (!extrasByItem[itemCode]) {
             extrasByItem[itemCode] = { cops: 0, tare: 0, gross: 0 };
           }
-          extrasByItem[itemCode].cops += parsed.cops;
-          extrasByItem[itemCode].tare += parsed.tare;
-          extrasByItem[itemCode].gross += parsed.gross;
+          extrasByItem[itemCode].cops += cops;
+          extrasByItem[itemCode].tare += tare;
+          extrasByItem[itemCode].gross += gross;
         });
 
         const itemNameMap: Record<string, string> = {};

@@ -25,6 +25,14 @@ type StockEntryListResponse = {
   }>;
 };
 
+const CUSTOM_FIELDS = {
+  box: "custom_box_no",
+  cops: "custom_cops",
+  tare: "custom_tare_weight",
+  gross: "custom_gross_weight",
+  net: "custom_net_weight"
+};
+
 function extractBoxNumber(remarks?: string) {
   if (!remarks) return 0;
   const match = remarks.match(/BOX:(\d+)/i);
@@ -43,6 +51,7 @@ export default function AddStockPage() {
   const [loadingWarehouses, setLoadingWarehouses] = useState(true);
   const [itemOptions, setItemOptions] = useState<string[]>([]);
   const [successMessage, setSuccessMessage] = useState("");
+  const [useCustomFields, setUseCustomFields] = useState(false);
   const netWeight = Math.max(0, grossWeight - tareWeight);
 
   useEffect(() => {
@@ -76,6 +85,28 @@ export default function AddStockPage() {
     };
 
     fetchStockItems();
+  }, []);
+
+  useEffect(() => {
+    const detectCustomFields = async () => {
+      try {
+        const response = await api.get("/api/method/frappe.client.get_meta", {
+          params: { doctype: "Stock Entry Detail" }
+        });
+        const fields = response.data?.message?.fields ?? [];
+        const names = new Set(fields.map((field: { fieldname?: string }) => field.fieldname));
+        const available =
+          names.has(CUSTOM_FIELDS.box) &&
+          names.has(CUSTOM_FIELDS.cops) &&
+          names.has(CUSTOM_FIELDS.tare) &&
+          names.has(CUSTOM_FIELDS.gross) &&
+          names.has(CUSTOM_FIELDS.net);
+        setUseCustomFields(available);
+      } catch {
+        setUseCustomFields(false);
+      }
+    };
+    detectCustomFields();
   }, []);
 
   useEffect(() => {
@@ -137,7 +168,16 @@ export default function AddStockPage() {
             qty: netWeight,
             t_warehouse: warehouse,
             allow_zero_valuation_rate: 1,
-            basic_rate: 0
+            basic_rate: 0,
+            ...(useCustomFields
+              ? {
+                  [CUSTOM_FIELDS.box]: boxNumber,
+                  [CUSTOM_FIELDS.cops]: cops,
+                  [CUSTOM_FIELDS.tare]: tareWeight,
+                  [CUSTOM_FIELDS.gross]: grossWeight,
+                  [CUSTOM_FIELDS.net]: netWeight
+                }
+              : {})
           }
         ]
       });
@@ -173,6 +213,11 @@ export default function AddStockPage() {
     <section className="mx-auto w-full max-w-xl rounded-xl bg-white p-6 shadow-sm">
       <h1 className="mb-6 text-2xl font-bold text-slate-900">Add Stock</h1>
       <form className="space-y-4" onSubmit={handleSubmit}>
+        {!useCustomFields && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Custom fields not detected on Stock Entry Item. Using remarks fallback.
+          </p>
+        )}
         <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
           Box Number: <span className="font-semibold">{boxNumber}</span>
         </div>

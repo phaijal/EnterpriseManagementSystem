@@ -22,6 +22,11 @@ type StockEntryDetailResponse = {
       t_warehouse?: string;
       s_warehouse?: string;
       qty?: number;
+      custom_box_no?: number;
+      custom_cops?: number;
+      custom_tare_weight?: number;
+      custom_gross_weight?: number;
+      custom_net_weight?: number;
     }>;
   };
 };
@@ -51,6 +56,14 @@ type EditDraft = {
   gross_weight: number;
 };
 
+const CUSTOM_FIELDS = {
+  box: "custom_box_no",
+  cops: "custom_cops",
+  tare: "custom_tare_weight",
+  gross: "custom_gross_weight",
+  net: "custom_net_weight"
+};
+
 function parseRemarks(remarks?: string) {
   const text = remarks ?? "";
   const get = (key: string) => {
@@ -76,6 +89,29 @@ export default function BoxesPage() {
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [useCustomFields, setUseCustomFields] = useState(false);
+
+  useEffect(() => {
+    const detectCustomFields = async () => {
+      try {
+        const response = await api.get("/api/method/frappe.client.get_meta", {
+          params: { doctype: "Stock Entry Detail" }
+        });
+        const fields = response.data?.message?.fields ?? [];
+        const names = new Set(fields.map((field: { fieldname?: string }) => field.fieldname));
+        const available =
+          names.has(CUSTOM_FIELDS.box) &&
+          names.has(CUSTOM_FIELDS.cops) &&
+          names.has(CUSTOM_FIELDS.tare) &&
+          names.has(CUSTOM_FIELDS.gross) &&
+          names.has(CUSTOM_FIELDS.net);
+        setUseCustomFields(available);
+      } catch {
+        setUseCustomFields(false);
+      }
+    };
+    detectCustomFields();
+  }, []);
 
   useEffect(() => {
     const fetchBoxes = async () => {
@@ -145,15 +181,20 @@ export default function BoxesPage() {
             if (itemWarehouse !== selectedWarehouse) return null;
             const itemCode = firstItem?.item_code || "-";
             const parsed = parseRemarks(entry.remarks);
+            const boxNumber = firstItem?.custom_box_no;
+            const cops = firstItem?.custom_cops;
+            const tare = firstItem?.custom_tare_weight;
+            const gross = firstItem?.custom_gross_weight;
+            const net = firstItem?.custom_net_weight;
 
             return {
-              box: parsed.box,
+              box: boxNumber ? `Box ${boxNumber}` : parsed.box,
               item_code: itemCode,
               item_name: itemNameMap[itemCode] || itemCode,
-              cops: parsed.cops ?? "-",
-              tare_weight: parsed.tare ?? "-",
-              gross_weight: parsed.gross ?? "-",
-              net_weight: parsed.net ?? firstItem?.qty ?? 0,
+              cops: cops ?? parsed.cops ?? "-",
+              tare_weight: tare ?? parsed.tare ?? "-",
+              gross_weight: gross ?? parsed.gross ?? "-",
+              net_weight: net ?? parsed.net ?? firstItem?.qty ?? 0,
               stock_entry: entry.name
             };
           })
@@ -238,15 +279,20 @@ export default function BoxesPage() {
           if (itemWarehouse !== selectedWarehouse) return null;
           const itemCode = firstItem?.item_code || "-";
           const parsed = parseRemarks(entry.remarks);
+          const boxNumber = firstItem?.custom_box_no;
+          const cops = firstItem?.custom_cops;
+          const tare = firstItem?.custom_tare_weight;
+          const gross = firstItem?.custom_gross_weight;
+          const net = firstItem?.custom_net_weight;
 
           return {
-            box: parsed.box,
+            box: boxNumber ? `Box ${boxNumber}` : parsed.box,
             item_code: itemCode,
             item_name: itemNameMap[itemCode] || itemCode,
-            cops: parsed.cops ?? "-",
-            tare_weight: parsed.tare ?? "-",
-            gross_weight: parsed.gross ?? "-",
-            net_weight: parsed.net ?? firstItem?.qty ?? 0,
+            cops: cops ?? parsed.cops ?? "-",
+            tare_weight: tare ?? parsed.tare ?? "-",
+            gross_weight: gross ?? parsed.gross ?? "-",
+            net_weight: net ?? parsed.net ?? firstItem?.qty ?? 0,
             stock_entry: entry.name
           };
         })
@@ -277,16 +323,61 @@ export default function BoxesPage() {
     const remarks = `BOX:${draft.box};COPS:${draft.cops};TARE:${draft.tare_weight};GROSS:${draft.gross_weight};NET:${net}`;
     setSaving(true);
     try {
-      await api.post("/api/method/frappe.client.set_value", {
+      // ERPNext blocks editing submitted remarks.
+      // Replace workflow: cancel old submitted entry, recreate with edited values, submit.
+      const existingResponse = await api.get(`/api/resource/Stock Entry/${row.stock_entry}`);
+      const existingDoc = existingResponse.data?.data;
+      const firstItem = existingDoc?.items?.[0];
+
+      if (!existingDoc || !firstItem) {
+        throw new Error("Unable to load existing Stock Entry details.");
+      }
+
+      await api.post("/api/method/frappe.client.cancel", {
         doctype: "Stock Entry",
-        name: row.stock_entry,
-        fieldname: "remarks",
-        value: remarks
+        name: row.stock_entry
       });
+
+      const recreatedResponse = await api.post("/api/resource/Stock Entry", {
+        stock_entry_type: existingDoc.stock_entry_type || "Material Receipt",
+        company: existingDoc.company,
+        posting_date: existingDoc.posting_date,
+        posting_time: existingDoc.posting_time,
+        remarks,
+        items: [
+          {
+            item_code: firstItem.item_code,
+            qty: net,
+            t_warehouse: firstItem.t_warehouse,
+            s_warehouse: firstItem.s_warehouse,
+            allow_zero_valuation_rate: firstItem.allow_zero_valuation_rate ?? 1,
+            basic_rate: firstItem.basic_rate ?? 0,
+            ...(useCustomFields
+              ? {
+                  [CUSTOM_FIELDS.box]: Number(draft.box || 0),
+                  [CUSTOM_FIELDS.cops]: draft.cops,
+                  [CUSTOM_FIELDS.tare]: draft.tare_weight,
+                  [CUSTOM_FIELDS.gross]: draft.gross_weight,
+                  [CUSTOM_FIELDS.net]: net
+                }
+              : {})
+          }
+        ]
+      });
+
+      const recreatedDoc = recreatedResponse.data?.data;
+      if (!recreatedDoc) {
+        throw new Error("Failed to create replacement Stock Entry.");
+      }
+
+      await api.post("/api/method/frappe.client.submit", {
+        doc: JSON.stringify(recreatedDoc)
+      });
+
       setEditingEntry(null);
       setDraft(null);
       await refreshBoxes();
-      alert("Box updated successfully.");
+      alert("Box updated successfully by replacing the original stock entry.");
     } catch (error) {
       alert(
         getApiErrorMessage(
