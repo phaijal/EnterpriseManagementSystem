@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { TablePagination } from "@/components/TablePagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
 
 type CustomerResponse = {
@@ -17,6 +19,8 @@ type CustomerDocResponse = {
     customer_name?: string;
     customer_primary_address?: string;
     primary_address?: string;
+    gstin?: string;
+    tax_id?: string;
   };
 };
 
@@ -38,6 +42,13 @@ type CustomerRow = {
 export default function CustomersPage() {
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const { pageItems, page, setPage, totalPages, from, to, total } = useClientPagination(
+    rows,
+    pageSize,
+    reloadToken
+  );
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -85,7 +96,7 @@ export default function CustomersPage() {
         const addressDocs = await Promise.all(
           addressNames.map((name) => api.get(`/api/resource/Address/${encodeURIComponent(name)}`))
         );
-        const addressByName: Record<string, any> = {};
+        const addressByName: Record<string, { address_line1?: string; city?: string; pincode?: string; gstin?: string; tax_id?: string; name?: string }> = {};
         addressDocs.forEach((doc) => {
           const data = doc.data?.data;
           if (data?.name) addressByName[data.name] = data;
@@ -100,11 +111,14 @@ export default function CustomersPage() {
             addressByTitle[customer.customer_name || customer.name || ""] ||
             "";
           const addr = addrName ? addressByName[addrName] : undefined;
+          const gstFromParty = customerDoc?.gstin || customerDoc?.tax_id || "";
+          const gstFromAddr = addr?.gstin || addr?.tax_id || "";
+          const gst = gstFromAddr || gstFromParty || "-";
           return {
             erpName: key,
             customer: customer.customer_name || customer.name || "-",
             address: [addr?.address_line1, addr?.city].filter(Boolean).join(", ") || "-",
-            gst: addr?.gstin || "-",
+            gst,
             pincode: addr?.pincode || "-"
           };
         });
@@ -118,11 +132,21 @@ export default function CustomersPage() {
     };
 
     loadCustomers();
-  }, []);
+  }, [reloadToken]);
 
   return (
     <section className="mx-auto w-full max-w-5xl rounded-xl bg-white p-6 shadow-sm">
-      <h1 className="mb-6 text-2xl font-bold text-slate-900">Customers</h1>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold text-slate-900">Customers</h1>
+        <button
+          type="button"
+          onClick={() => setReloadToken((n) => n + 1)}
+          disabled={loading}
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+        >
+          Refresh
+        </button>
+      </div>
 
       {loading ? (
         <p className="text-slate-600">Loading customers...</p>
@@ -140,7 +164,7 @@ export default function CustomersPage() {
             </thead>
             <tbody>
               {rows.length > 0 ? (
-                rows.map((row, index) => (
+                pageItems.map((row, index) => (
                   <tr key={`${row.erpName}-${index}`} className="border-t">
                     <td className="px-4 py-3 text-slate-800">{row.customer}</td>
                     <td className="px-4 py-3 text-slate-800">{row.address}</td>
@@ -165,6 +189,16 @@ export default function CustomersPage() {
               )}
             </tbody>
           </table>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
     </section>

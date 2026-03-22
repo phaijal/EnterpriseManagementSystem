@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { TablePagination } from "@/components/TablePagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
 import { weightLabel } from "@/lib/units";
 
 type StockResponse = {
@@ -15,12 +18,6 @@ type ItemNameResponse = {
   data: Array<{
     name?: string;
     item_name?: string;
-  }>;
-};
-
-type WarehouseResponse = {
-  data: Array<{
-    name?: string;
   }>;
 };
 
@@ -71,18 +68,17 @@ export default function StockPage() {
   const [stock, setStock] = useState<ViewRow[]>([]);
   const [warehouse, setWarehouse] = useState("");
   const [loading, setLoading] = useState(true);
+  const [pageSize, setPageSize] = useState(25);
+  const { pageItems, page, setPage, totalPages, from, to, total } = useClientPagination(
+    stock,
+    pageSize,
+    warehouse
+  );
 
   useEffect(() => {
     const fetchStock = async () => {
       try {
-        const warehouseResponse = await api.get<WarehouseResponse>(
-          '/api/resource/Warehouse?fields=["name"]&filters=[["disabled","=",0],["is_group","=",0]]&limit_page_length=500'
-        );
-        const names = (warehouseResponse.data.data ?? [])
-          .map((row) => row.name || "")
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b));
-        const selectedWarehouse = names[0] ?? "";
+        const selectedWarehouse = await fetchAppWarehouseName();
         setWarehouse(selectedWarehouse);
 
         if (!selectedWarehouse) {
@@ -192,7 +188,9 @@ export default function StockPage() {
     <section className="mx-auto w-full max-w-3xl rounded-xl bg-white p-6 shadow-sm">
       <h1 className="mb-6 text-2xl font-bold text-slate-900">Current Stock</h1>
       <p className="mb-4 rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-        Viewing warehouse: <span className="font-semibold">{warehouse || "Not found"}</span>
+        Finished goods warehouse:{" "}
+        <span className="font-semibold">{warehouse || "Not found"}</span>
+        <span className="text-slate-500"> (fixed)</span>
       </p>
 
       {loading ? (
@@ -212,7 +210,7 @@ export default function StockPage() {
             </thead>
             <tbody>
               {stock.length > 0 ? (
-                stock.map((row, index) => (
+                pageItems.map((row, index) => (
                   <tr key={`${row.item_code}-${index}`} className="border-t">
                     <td className="px-4 py-3 text-slate-800">{row.item_code}</td>
                     <td className="px-4 py-3 text-slate-800">{row.item_name}</td>
@@ -231,6 +229,16 @@ export default function StockPage() {
               )}
             </tbody>
           </table>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
     </section>

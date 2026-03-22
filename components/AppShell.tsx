@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { SelectTextOnFocus } from "@/components/SelectTextOnFocus";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 type NavItem = {
   href: string;
@@ -21,7 +23,7 @@ type NavGroup = {
 const groups: NavGroup[] = [
   {
     title: "Overview",
-    items: [{ href: "/", label: "Dashboard" }]
+    items: [{ href: "/", label: "Home" }]
   },
   {
     title: "Inventory",
@@ -60,8 +62,9 @@ function linkActive(pathname: string, item: NavItem) {
   return pathname === item.href;
 }
 
-export default function AppShell({ children }: { children: ReactNode }) {
+function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { user, loading: authLoading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -79,6 +82,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-100/80 lg:flex-row">
+      <SelectTextOnFocus />
       {/* Mobile menu bar */}
       <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 shadow-sm lg:hidden">
         <button
@@ -157,6 +161,36 @@ export default function AppShell({ children }: { children: ReactNode }) {
             ))}
           </div>
         </nav>
+        <div className="shrink-0 space-y-2 border-t border-slate-800/80 p-3">
+          {authLoading ? (
+            <p className="px-3 text-xs text-slate-500">Checking session…</p>
+          ) : user && user !== "Guest" ? (
+            <>
+              <p className="px-3 text-xs text-slate-400">
+                Signed in as{" "}
+                <span className="font-medium text-slate-100">{user}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void logout();
+                  setMobileOpen(false);
+                }}
+                className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-center text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/#dashboard-login"
+              className="block w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-center text-sm font-medium text-slate-200 transition hover:border-emerald-500/60 hover:bg-slate-800 hover:text-white"
+              onClick={() => setMobileOpen(false)}
+            >
+              Log in
+            </Link>
+          )}
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -165,5 +199,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <AuthProvider>
+      <AppShellInner>{children}</AppShellInner>
+    </AuthProvider>
   );
 }

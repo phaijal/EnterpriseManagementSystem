@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { TablePagination } from "@/components/TablePagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
+import { fetchDoctypeFieldNames } from "@/lib/frappeMeta";
 import { weightLabel } from "@/lib/units";
 import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
-
-type WarehouseResponse = {
-  data: Array<{ name?: string }>;
-};
+import { printSingleBoxSlip } from "@/lib/boxSlipPrint";
+import { GRADE_OPTIONS, parseRemarkToken, sanitizeLotForRemarks } from "@/lib/stockEntryRemarks";
 
 type StockEntryListResponse = {
   data: Array<{
@@ -29,6 +31,8 @@ type StockEntryDetailResponse = {
       custom_tare_weight?: number;
       custom_gross_weight?: number;
       custom_net_weight?: number;
+      custom_grade?: string;
+      custom_lot_no?: string;
     }>;
   };
 };
@@ -44,6 +48,8 @@ type BoxRow = {
   box: string;
   item_code: string;
   item_name: string;
+  grade: string;
+  lot: string;
   cops: number | "-";
   tare_weight: number | "-";
   gross_weight: number | "-";
@@ -56,6 +62,8 @@ type EditDraft = {
   cops: number;
   tare_weight: number;
   gross_weight: number;
+  grade: string;
+  lot: string;
 };
 
 const CUSTOM_FIELDS = {
@@ -63,7 +71,9 @@ const CUSTOM_FIELDS = {
   cops: "custom_cops",
   tare: "custom_tare_weight",
   gross: "custom_gross_weight",
-  net: "custom_net_weight"
+  net: "custom_net_weight",
+  grade: "custom_grade",
+  lot: "custom_lot_no"
 };
 
 function parseRemarks(remarks?: string) {
@@ -89,20 +99,19 @@ export default function BoxesPage() {
   /** Stock Entry name → submitted Delivery Note name */
   const [challanByStockEntry, setChallanByStockEntry] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState("");
+  const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [slipPrinting, setSlipPrinting] = useState<string | null>(null);
   const [useCustomFields, setUseCustomFields] = useState(false);
+  const [useGradeLotCustom, setUseGradeLotCustom] = useState(false);
 
   useEffect(() => {
     const detectCustomFields = async () => {
       try {
-        const response = await api.get("/api/method/frappe.client.get_meta", {
-          params: { doctype: "Stock Entry Detail" }
-        });
-        const fields = response.data?.message?.fields ?? [];
-        const names = new Set(fields.map((field: { fieldname?: string }) => field.fieldname));
+        const names = await fetchDoctypeFieldNames("Stock Entry Detail");
         const available =
           names.has(CUSTOM_FIELDS.box) &&
           names.has(CUSTOM_FIELDS.cops) &&
@@ -110,8 +119,12 @@ export default function BoxesPage() {
           names.has(CUSTOM_FIELDS.gross) &&
           names.has(CUSTOM_FIELDS.net);
         setUseCustomFields(available);
+        setUseGradeLotCustom(
+          names.has(CUSTOM_FIELDS.grade) && names.has(CUSTOM_FIELDS.lot)
+        );
       } catch {
         setUseCustomFields(false);
+        setUseGradeLotCustom(false);
       }
     };
     detectCustomFields();
@@ -120,14 +133,7 @@ export default function BoxesPage() {
   useEffect(() => {
     const fetchBoxes = async () => {
       try {
-        const warehouseResponse = await api.get<WarehouseResponse>(
-          '/api/resource/Warehouse?fields=["name"]&filters=[["disabled","=",0],["is_group","=",0]]&limit_page_length=500'
-        );
-        const names = (warehouseResponse.data.data ?? [])
-          .map((row) => row.name || "")
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b));
-        const selectedWarehouse = names[0] ?? "";
+        const selectedWarehouse = await fetchAppWarehouseName();
         setWarehouse(selectedWarehouse);
 
         if (!selectedWarehouse) {
@@ -190,11 +196,21 @@ export default function BoxesPage() {
             const tare = firstItem?.custom_tare_weight;
             const gross = firstItem?.custom_gross_weight;
             const net = firstItem?.custom_net_weight;
+            const grade =
+              firstItem?.custom_grade?.trim() ||
+              parseRemarkToken(entry.remarks, "GRADE") ||
+              "—";
+            const lot =
+              firstItem?.custom_lot_no?.trim() ||
+              parseRemarkToken(entry.remarks, "LOT") ||
+              "—";
 
             return {
               box: boxNumber ? `Box ${boxNumber}` : parsed.box,
               item_code: itemCode,
               item_name: itemNameMap[itemCode] || itemCode,
+              grade,
+              lot,
               cops: cops ?? parsed.cops ?? "-",
               tare_weight: tare ?? parsed.tare ?? "-",
               gross_weight: gross ?? parsed.gross ?? "-",
@@ -220,14 +236,7 @@ export default function BoxesPage() {
   const refreshBoxes = async () => {
     setLoading(true);
     try {
-      const warehouseResponse = await api.get<WarehouseResponse>(
-        '/api/resource/Warehouse?fields=["name"]&filters=[["disabled","=",0],["is_group","=",0]]&limit_page_length=500'
-      );
-      const names = (warehouseResponse.data.data ?? [])
-        .map((row) => row.name || "")
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b));
-      const selectedWarehouse = names[0] ?? "";
+      const selectedWarehouse = await fetchAppWarehouseName();
       setWarehouse(selectedWarehouse);
 
       if (!selectedWarehouse) {
@@ -290,11 +299,21 @@ export default function BoxesPage() {
           const tare = firstItem?.custom_tare_weight;
           const gross = firstItem?.custom_gross_weight;
           const net = firstItem?.custom_net_weight;
+          const grade =
+            firstItem?.custom_grade?.trim() ||
+            parseRemarkToken(entry.remarks, "GRADE") ||
+            "—";
+          const lot =
+            firstItem?.custom_lot_no?.trim() ||
+            parseRemarkToken(entry.remarks, "LOT") ||
+            "—";
 
           return {
             box: boxNumber ? `Box ${boxNumber}` : parsed.box,
             item_code: itemCode,
             item_name: itemNameMap[itemCode] || itemCode,
+            grade,
+            lot,
             cops: cops ?? parsed.cops ?? "-",
             tare_weight: tare ?? parsed.tare ?? "-",
             gross_weight: gross ?? parsed.gross ?? "-",
@@ -321,14 +340,20 @@ export default function BoxesPage() {
       box: boxMatch ? boxMatch[1] : "",
       cops: typeof row.cops === "number" ? row.cops : 0,
       tare_weight: typeof row.tare_weight === "number" ? row.tare_weight : 0,
-      gross_weight: typeof row.gross_weight === "number" ? row.gross_weight : 0
+      gross_weight: typeof row.gross_weight === "number" ? row.gross_weight : 0,
+      grade: row.grade !== "—" ? row.grade : "1st",
+      lot: row.lot !== "—" ? row.lot : ""
     });
   };
 
   const saveEdit = async (row: BoxRow) => {
     if (!draft) return;
     const net = Math.max(0, draft.gross_weight - draft.tare_weight);
-    const remarks = `BOX:${draft.box};COPS:${draft.cops};TARE:${draft.tare_weight};GROSS:${draft.gross_weight};NET:${net}`;
+    const lotClean = sanitizeLotForRemarks(draft.lot);
+    if (!lotClean) {
+      alert("Lot number is required.");
+      return;
+    }
     setSaving(true);
     try {
       // ERPNext blocks editing submitted remarks.
@@ -340,6 +365,11 @@ export default function BoxesPage() {
       if (!existingDoc || !firstItem) {
         throw new Error("Unable to load existing Stock Entry details.");
       }
+
+      const copw = parseRemarkToken(existingDoc.remarks, "COPW");
+      let remarks = `BOX:${draft.box};COPS:${draft.cops};GROSS:${draft.gross_weight};TARE:${draft.tare_weight};NET:${net}`;
+      if (copw !== undefined && copw !== "") remarks += `;COPW:${copw}`;
+      remarks += `;GRADE:${draft.grade};LOT:${lotClean}`;
 
       await api.post("/api/method/frappe.client.cancel", {
         doctype: "Stock Entry",
@@ -367,6 +397,12 @@ export default function BoxesPage() {
                   [CUSTOM_FIELDS.tare]: draft.tare_weight,
                   [CUSTOM_FIELDS.gross]: draft.gross_weight,
                   [CUSTOM_FIELDS.net]: net
+                }
+              : {}),
+            ...(useGradeLotCustom
+              ? {
+                  [CUSTOM_FIELDS.grade]: draft.grade,
+                  [CUSTOM_FIELDS.lot]: lotClean
                 }
               : {})
           }
@@ -398,18 +434,42 @@ export default function BoxesPage() {
     }
   };
 
+  const handlePrintSlip = useCallback(async (row: BoxRow) => {
+    setSlipPrinting(row.stock_entry);
+    try {
+      const res = await api.get<{ data?: { remarks?: string } }>(
+        `/api/resource/Stock Entry/${encodeURIComponent(row.stock_entry)}`
+      );
+      const remarks = res.data?.data?.remarks;
+      printSingleBoxSlip({ row, stockEntryRemarks: remarks });
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to load stock entry for slip."));
+    } finally {
+      setSlipPrinting(null);
+    }
+  }, []);
+
   const filteredRows = useMemo(() => {
     const term = filter.trim().toLowerCase();
     if (!term) return rows;
     return rows.filter((row) => row.item_code.toLowerCase().includes(term));
   }, [rows, filter]);
 
+  const { pageItems, page, setPage, totalPages, from, to, total } = useClientPagination(
+    filteredRows,
+    pageSize,
+    filter
+  );
+
   return (
     <section className="mx-auto w-full max-w-5xl rounded-xl bg-white p-6 shadow-sm">
       <h1 className="mb-6 text-2xl font-bold text-slate-900">Boxes</h1>
       <p className="mb-4 rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-        Viewing warehouse: <span className="font-semibold">{warehouse || "Not found"}</span>. Boxes on a
-        submitted challan cannot be edited; cancel the challan (All Challans) to release them.
+        Finished goods warehouse:{" "}
+        <span className="font-semibold">{warehouse || "Not found"}</span> (fixed). Use{" "}
+        <span className="font-semibold">Print slip</span> on any row for a single-box print (same layout as
+        Add stock). Boxes on a submitted challan cannot be edited; cancel the challan (All Challans) to
+        release them.
       </p>
 
       <div className="mb-4">
@@ -434,17 +494,20 @@ export default function BoxesPage() {
                 <th className="px-4 py-3">Box</th>
                 <th className="px-4 py-3">Item Code</th>
                 <th className="px-4 py-3">Stock Name</th>
+                <th className="px-4 py-3">Grade</th>
+                <th className="px-4 py-3">Lot</th>
                 <th className="px-4 py-3">Cops</th>
                 <th className="px-4 py-3">{weightLabel("Tare weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Gross weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Net weight")}</th>
                 <th className="px-4 py-3">Challan</th>
+                <th className="px-4 py-3">Slip</th>
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.length > 0 ? (
-                filteredRows.map((row, index) => (
+                pageItems.map((row, index) => (
                   <tr key={`${row.stock_entry}-${index}`} className="border-t">
                     <td className="px-4 py-3 text-slate-800">
                       {editingEntry === row.stock_entry && draft ? (
@@ -463,6 +526,41 @@ export default function BoxesPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-800">{row.item_code}</td>
                     <td className="px-4 py-3 text-slate-800">{row.item_name}</td>
+                    <td className="px-4 py-3 text-slate-800">
+                      {editingEntry === row.stock_entry && draft ? (
+                        <select
+                          value={draft.grade}
+                          onChange={(e) =>
+                            setDraft((prev) => (prev ? { ...prev, grade: e.target.value } : prev))
+                          }
+                          className="w-full min-w-[4rem] rounded border px-1 py-1 text-sm"
+                        >
+                          {GRADE_OPTIONS.map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        row.grade
+                      )}
+                    </td>
+                    <td className="max-w-[7rem] px-4 py-3 text-slate-800">
+                      {editingEntry === row.stock_entry && draft ? (
+                        <input
+                          type="text"
+                          value={draft.lot}
+                          onChange={(e) =>
+                            setDraft((prev) => (prev ? { ...prev, lot: e.target.value } : prev))
+                          }
+                          className="w-full rounded border px-2 py-1 text-sm"
+                        />
+                      ) : (
+                        <span className="block truncate" title={row.lot}>
+                          {row.lot}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-800">
                       {editingEntry === row.stock_entry && draft ? (
                         <input
@@ -531,6 +629,16 @@ export default function BoxesPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-800">
+                      <button
+                        type="button"
+                        disabled={loading || slipPrinting === row.stock_entry}
+                        onClick={() => void handlePrintSlip(row)}
+                        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {slipPrinting === row.stock_entry ? "…" : "Print slip"}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-slate-800">
                       {challanByStockEntry[row.stock_entry] ? (
                         <span className="text-xs text-slate-500">On challan</span>
                       ) : editingEntry === row.stock_entry ? (
@@ -569,13 +677,23 @@ export default function BoxesPage() {
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={9}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={12}>
                     No box records found.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
     </section>

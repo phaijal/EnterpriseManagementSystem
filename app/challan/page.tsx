@@ -3,15 +3,11 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
 import { encodeChallanPayload } from "@/lib/challanPayload";
 import { WEIGHT_UNIT_LABEL } from "@/lib/units";
 import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
-
-type WarehouseResponse = {
-  data: Array<{
-    name?: string;
-  }>;
-};
+import { parseRemarkToken } from "@/lib/stockEntryRemarks";
 
 type CustomerResponse = {
   data: Array<{
@@ -44,6 +40,8 @@ type StockEntryDetailResponse = {
       custom_tare_weight?: number;
       custom_gross_weight?: number;
       custom_net_weight?: number;
+      custom_grade?: string;
+      custom_lot_no?: string;
     }>;
   };
 };
@@ -65,6 +63,8 @@ type BoxOption = {
   gross: number;
   net: number;
   warehouse: string;
+  grade: string;
+  lot: string;
 };
 
 const CUSTOM_FIELDS = {
@@ -96,7 +96,6 @@ export default function ChallanPage() {
   const [customerOptions, setCustomerOptions] = useState<string[]>([]);
   const [itemCode, setItemCode] = useState("");
   const [warehouse, setWarehouse] = useState("");
-  const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
   const [companyName, setCompanyName] = useState("");
   const [companyGstin, setCompanyGstin] = useState("");
   const [boxOptions, setBoxOptions] = useState<BoxOption[]>([]);
@@ -111,22 +110,10 @@ export default function ChallanPage() {
   useEffect(() => {
     const fetchWarehouses = async () => {
       try {
-        const response = await api.get<WarehouseResponse>(
-          '/api/resource/Warehouse?fields=["name"]&filters=[["disabled","=",0],["is_group","=",0]]&limit_page_length=500'
-        );
-        const names = (response.data.data ?? [])
-          .map((row) => row.name || "")
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b));
-
-        setWarehouseOptions(names);
-        if (names.length > 0) {
-          setWarehouse(names[0]);
-        } else {
-          setWarehouse("");
-        }
+        const picked = await fetchAppWarehouseName();
+        setWarehouse(picked);
       } catch (error) {
-        alert(getApiErrorMessage(error, "Failed to fetch warehouse list."));
+        alert(getApiErrorMessage(error, "Failed to fetch finished goods warehouse."));
       } finally {
         setLoadingWarehouses(false);
       }
@@ -246,6 +233,14 @@ export default function ChallanPage() {
             const gross = Number(firstItem.custom_gross_weight ?? parsed.gross ?? 0);
             const net = Number(firstItem.custom_net_weight ?? parsed.net ?? firstItem.qty ?? 0);
             const ic = firstItem.item_code;
+            const grade =
+              firstItem.custom_grade?.trim() ||
+              parseRemarkToken(entry.remarks, "GRADE") ||
+              "";
+            const lot =
+              firstItem.custom_lot_no?.trim() ||
+              parseRemarkToken(entry.remarks, "LOT") ||
+              "";
             return {
               stock_entry: entry.name,
               item_code: ic,
@@ -255,7 +250,9 @@ export default function ChallanPage() {
               tare,
               gross,
               net,
-              warehouse: itemWh
+              warehouse: itemWh,
+              grade,
+              lot
             };
           })
           .filter((row): row is BoxOption => Boolean(row));
@@ -323,13 +320,17 @@ export default function ChallanPage() {
     setSuccessMessage("");
 
     try {
-      const itemRows = selectedBoxes.map((box) => ({
-        item_code: box.item_code,
-        qty: box.net,
-        warehouse,
-        allow_zero_valuation_rate: 1,
-        description: `${box.box_label} — ${box.item_name} (${box.item_code}) — COPS:${box.cops} TARE:${box.tare} GROSS:${box.gross} NET:${box.net} STOCK_ENTRY:${box.stock_entry}`
-      }));
+      const itemRows = selectedBoxes.map((box) => {
+        const gl =
+          box.grade && box.lot ? ` GRADE:${box.grade} LOT:${box.lot}` : "";
+        return {
+          item_code: box.item_code,
+          qty: box.net,
+          warehouse,
+          allow_zero_valuation_rate: 1,
+          description: `${box.box_label} — ${box.item_name} (${box.item_code}) — COPS:${box.cops} GROSS:${box.gross} TARE:${box.tare} NET:${box.net}${gl} STOCK_ENTRY:${box.stock_entry}`
+        };
+      });
 
       const humanRemarks = `BOXES:${selectedBoxes.map((box) => box.box_label).join(", ")};TOTAL_NET:${totalNetWeight}`;
       const challanPayload = encodeChallanPayload({
@@ -342,7 +343,9 @@ export default function ChallanPage() {
           tare: box.tare,
           gross: box.gross,
           net: box.net,
-          stock_entry: box.stock_entry
+          stock_entry: box.stock_entry,
+          grade: box.grade || undefined,
+          lot: box.lot || undefined
         }))
       });
 
@@ -428,33 +431,21 @@ export default function ChallanPage() {
 
             <div>
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Warehouse & filters
+                Finished goods warehouse & filters
               </h2>
               <div className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Warehouse</label>
-                  <select
-                    value={warehouse}
-                    onChange={(e) => setWarehouse(e.target.value)}
-                    required
-                    disabled={loadingWarehouses || warehouseOptions.length === 0}
-                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
-                  >
-                    {loadingWarehouses ? (
-                      <option value="">Loading warehouses…</option>
-                    ) : warehouseOptions.length === 0 ? (
-                      <option value="">No leaf warehouses found</option>
-                    ) : (
-                      warehouseOptions.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Same default as Add Stock / Boxes (leaf warehouses only).
-                  </p>
+                  <p className="mb-1 text-sm font-medium text-slate-700">Warehouse</p>
+                  <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                    {loadingWarehouses ?
+                      "Loading…"
+                    : warehouse ?
+                      <>
+                        <span className="font-semibold">{warehouse}</span>
+                        <span className="ml-1 text-slate-500">(Finished Goods, fixed)</span>
+                      </>
+                    : <span className="text-slate-500">No finished goods warehouse found</span>}
+                  </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Item filter</label>
@@ -504,8 +495,9 @@ export default function ChallanPage() {
                   <ul className="space-y-1">
                     {selectedBoxes.map((box) => (
                       <li key={box.stock_entry}>
-                        {box.box_label} · {box.item_name} ({box.item_code}) · C {box.cops} · T {box.tare}{" "}
-                        {WEIGHT_UNIT_LABEL} · G {box.gross} {WEIGHT_UNIT_LABEL} · N {box.net}{" "}
+                        {box.box_label} · {box.item_name} ({box.item_code})
+                        {box.grade && box.lot ? ` · ${box.grade} · Lot ${box.lot}` : ""} · C {box.cops} · G{" "}
+                        {box.gross} {WEIGHT_UNIT_LABEL} · T {box.tare} {WEIGHT_UNIT_LABEL} · N {box.net}{" "}
                         {WEIGHT_UNIT_LABEL}
                       </li>
                     ))}
@@ -552,7 +544,10 @@ export default function ChallanPage() {
               {loadingBoxes ? (
                 <p className="text-sm text-slate-500">Loading boxes…</p>
               ) : !warehouse ? (
-                <p className="text-sm text-slate-500">Choose a warehouse to list boxes.</p>
+                <p className="text-sm text-slate-500">
+                  No finished goods warehouse available. Use a leaf warehouse with type &quot;Finished
+                  Goods&quot;, or leave Warehouse Type blank (treated as Finished Goods).
+                </p>
               ) : (
                 <p className="mb-3 text-xs text-slate-500">
                   Boxes already on a submitted challan are hidden here. Cancel the challan under All
@@ -583,16 +578,19 @@ export default function ChallanPage() {
                           }}
                         />
                         <span>
-                          {box.box_label} — {box.item_name} ({box.item_code}) — C {box.cops} · T {box.tare}{" "}
-                          {WEIGHT_UNIT_LABEL} · G {box.gross} {WEIGHT_UNIT_LABEL} · N {box.net}{" "}
-                          {WEIGHT_UNIT_LABEL}
+                        {box.box_label} — {box.item_name} ({box.item_code})
+                        {box.grade && box.lot ?
+                          ` · ${box.grade} · Lot ${box.lot}`
+                        : ""}{" "}
+                        — C {box.cops} · G {box.gross} {WEIGHT_UNIT_LABEL} · T {box.tare}{" "}
+                        {WEIGHT_UNIT_LABEL} · N {box.net} {WEIGHT_UNIT_LABEL}
                         </span>
                       </label>
                     );
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-slate-500">No boxes for this warehouse / filter.</p>
+                <p className="text-sm text-slate-500">No boxes for this finished goods warehouse / filter.</p>
               )}
             </div>
           </div>

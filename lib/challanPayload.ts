@@ -7,6 +7,9 @@ export type ChallanBoxLine = {
   tare: number;
   gross: number;
   net: number;
+  /** e.g. 1st, PQ, CLQ */
+  grade?: string;
+  lot?: string;
   /** Material Receipt Stock Entry — used to lock row on Boxes page while challan is submitted */
   stock_entry?: string;
 };
@@ -54,7 +57,7 @@ export function decodeChallanPayload(remarks?: string): ChallanPayload | null {
 
 /**
  * Parse our line description saved on Delivery Note Item:
- * `Box 1 — Item Name (ITEMCODE) — COPS:1 TARE:0 GROSS:10 NET:10`
+ * `Box 1 — Item Name (ITEMCODE) — COPS:1 GROSS:10 TARE:0 NET:10` (legacy: TARE before GROSS still parses)
  * (em dash, en dash, or hyphen between segments)
  */
 function normalizeDnDescriptionText(text: string): string {
@@ -65,21 +68,41 @@ function normalizeDnDescriptionText(text: string): string {
 export function parseBoxLineFromDnDescription(text?: string | null): Partial<ChallanBoxLine> | null {
   if (!text?.trim()) return null;
   const normalized = normalizeDnDescriptionText(text);
-  const nums = normalized.match(
+  const grossFirst = normalized.match(
+    /COPS:\s*([\d.+-]+)\s+GROSS:\s*([\d.+-]+)\s+TARE:\s*([\d.+-]+)\s+NET:\s*([\d.+-]+)/i
+  );
+  const tareFirst = normalized.match(
     /COPS:\s*([\d.+-]+)\s+TARE:\s*([\d.+-]+)\s+GROSS:\s*([\d.+-]+)\s+NET:\s*([\d.+-]+)/i
   );
-  if (!nums) return null;
-  const cops = Number(nums[1]) || 0;
-  const tare = Number(nums[2]) || 0;
-  const gross = Number(nums[3]) || 0;
-  const net = Number(nums[4]) || 0;
+  let cops: number;
+  let tare: number;
+  let gross: number;
+  let net: number;
+  if (grossFirst) {
+    cops = Number(grossFirst[1]) || 0;
+    gross = Number(grossFirst[2]) || 0;
+    tare = Number(grossFirst[3]) || 0;
+    net = Number(grossFirst[4]) || 0;
+  } else if (tareFirst) {
+    cops = Number(tareFirst[1]) || 0;
+    tare = Number(tareFirst[2]) || 0;
+    gross = Number(tareFirst[3]) || 0;
+    net = Number(tareFirst[4]) || 0;
+  } else {
+    return null;
+  }
+
+  const gradeM = normalized.match(/GRADE:\s*(\S+)/i);
+  const lotWithStock = normalized.match(/LOT:\s*(.+?)\s+STOCK_ENTRY:/i);
+  const grade = gradeM?.[1]?.trim();
+  const lot = lotWithStock?.[1]?.trim();
 
   const headEnd = normalized.search(/COPS:/i);
   const head = (headEnd >= 0 ? normalized.slice(0, headEnd) : normalized).trim();
   const splitRe = /^(.+?)\s*[—\u2013\-]\s+(.+?)\s+\(([^)]*)\)\s*$/;
   const m = head.match(splitRe);
   if (!m) {
-    return { box_label: head || "—", cops, tare, gross, net };
+    return { box_label: head || "—", cops, tare, gross, net, grade, lot };
   }
   return {
     box_label: m[1].trim(),
@@ -88,7 +111,9 @@ export function parseBoxLineFromDnDescription(text?: string | null): Partial<Cha
     cops,
     tare,
     gross,
-    net
+    net,
+    grade,
+    lot
   };
 }
 
@@ -140,7 +165,9 @@ export function resolveChallanBoxLines(
         cops: parsed.cops ?? 0,
         tare: parsed.tare ?? 0,
         gross: parsed.gross ?? 0,
-        net
+        net,
+        grade: parsed.grade,
+        lot: parsed.lot
       };
     }
     if (fullFallback?.[i]) return fullFallback[i];

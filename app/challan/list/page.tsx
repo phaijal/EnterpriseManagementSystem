@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TablePagination } from "@/components/TablePagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
-import {
-  decodeChallanPayload,
-  resolveChallanBoxLines,
-  type ChallanBoxLine
-} from "@/lib/challanPayload";
+import { resolveChallanBoxLines, type ChallanBoxLine } from "@/lib/challanPayload";
 import { buildChallanHtmlDocument, triggerHtmlDownload } from "@/lib/challanDownloadHtml";
+import { fetchCompanyPrintDetails, fetchCustomerPrintDetails } from "@/lib/challanPrintParties";
 
 type DeliveryNoteRow = {
   name: string;
@@ -25,6 +24,7 @@ type DeliveryNoteDetail = {
   data?: {
     name?: string;
     customer?: string;
+    /** Display name from ERPNext */
     customer_name?: string;
     posting_date?: string;
     company?: string;
@@ -74,19 +74,13 @@ async function enrichBoxLinesWithItemNames(boxes: ChallanBoxLine[]): Promise<Cha
   }
 }
 
-function resolveWarehouseForDownload(doc: NonNullable<DeliveryNoteDetail["data"]>): string {
-  const decoded = decodeChallanPayload(doc.remarks);
-  if (decoded?.warehouse) return decoded.warehouse;
-  const w = doc.items?.find((it) => it.warehouse)?.warehouse;
-  return w ?? "—";
-}
-
 export default function ChallanListPage() {
   const [rows, setRows] = useState<DeliveryNoteRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionName, setActionName] = useState<string | null>(null);
   const [downloadingName, setDownloadingName] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState(25);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -121,6 +115,12 @@ export default function ChallanListPage() {
     );
   }, [rows, search]);
 
+  const { pageItems, page, setPage, totalPages, from, to, total } = useClientPagination(
+    filtered,
+    pageSize,
+    search
+  );
+
   const docstatusLabel = (d?: number) => {
     if (d === 0) return "Draft";
     if (d === 1) return "Submitted";
@@ -142,14 +142,23 @@ export default function ChallanListPage() {
 
       let boxes = resolveChallanBoxLines(doc.remarks, doc.items ?? []);
       boxes = await enrichBoxLinesWithItemNames(boxes);
+
+      const companyId = (doc.company || "").trim();
+      const customerId = (doc.customer || "").trim();
+      const [companyParty, customerParty] = await Promise.all([
+        companyId ? fetchCompanyPrintDetails(companyId) : Promise.resolve(undefined),
+        customerId ? fetchCustomerPrintDetails(customerId) : Promise.resolve(undefined)
+      ]);
+
       const html = buildChallanHtmlDocument({
         name: doc.name || name,
         customer: doc.customer_name || doc.customer,
         posting_date: doc.posting_date,
         company: doc.company,
-        warehouse: resolveWarehouseForDownload(doc),
         remarks: doc.remarks,
-        boxes
+        boxes,
+        companyParty,
+        customerParty
       });
 
       const safeFile = name.replace(/[^\w.-]+/g, "_");
@@ -240,8 +249,9 @@ export default function ChallanListPage() {
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-slate-900">All Challans</h1>
         <p className="text-sm text-slate-600">
-          Delivery Notes listed newest first ({rows.length} loaded). Download opens an HTML file (open in
-          browser or print to PDF). New challans include full per-box weights; older ones may show net only.
+          Delivery Notes listed newest first ({rows.length} loaded; use pagination below for long lists).
+          Download opens an HTML file (open in browser or print to PDF). New challans include full per-box
+          weights; older ones may show net only.
         </p>
       </div>
 
@@ -275,7 +285,7 @@ export default function ChallanListPage() {
             </thead>
             <tbody>
               {filtered.length > 0 ? (
-                filtered.map((row) => (
+                pageItems.map((row) => (
                   <tr key={row.name} className="border-t text-slate-800">
                     <td className="px-4 py-3 font-mono text-xs">{row.name}</td>
                     <td className="px-4 py-3">{row.customer || "—"}</td>
@@ -321,6 +331,16 @@ export default function ChallanListPage() {
               )}
             </tbody>
           </table>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            setPage={setPage}
+            from={from}
+            to={to}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
     </section>

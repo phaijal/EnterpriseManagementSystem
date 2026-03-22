@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
-import { WEIGHT_UNIT_LABEL } from "@/lib/units";
+import { fetchDoctypeFieldNames } from "@/lib/frappeMeta";
+import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
+import {
+  GRADE_OPTIONS,
+  type GradeValue,
+  sanitizeLotForRemarks
+} from "@/lib/stockEntryRemarks";
+import { buildBoxSlipsHtmlDocument, printBoxSlipsHtml } from "@/lib/boxSlipPrint";
+import { WEIGHT_UNIT_LABEL, weightLabel } from "@/lib/units";
 
 type ItemRow = {
   item_code?: string;
@@ -12,12 +20,6 @@ type ItemRow = {
 
 type ItemResponse = {
   data: ItemRow[];
-};
-
-type WarehouseResponse = {
-  data: Array<{
-    name?: string;
-  }>;
 };
 
 type StockEntryListResponse = {
@@ -31,7 +33,9 @@ const CUSTOM_FIELDS = {
   cops: "custom_cops",
   tare: "custom_tare_weight",
   gross: "custom_gross_weight",
-  net: "custom_net_weight"
+  net: "custom_net_weight",
+  grade: "custom_grade",
+  lot: "custom_lot_no"
 };
 
 function extractBoxNumber(remarks?: string) {
@@ -40,12 +44,33 @@ function extractBoxNumber(remarks?: string) {
   return match ? Number(match[1]) : 0;
 }
 
+async function fetchMaxBoxNumber(): Promise<number> {
+  try {
+    const response = await api.get<StockEntryListResponse>(
+      '/api/resource/Stock Entry?fields=["remarks"]&filters=[["stock_entry_type","=","Material Receipt"]]&order_by=creation desc&limit_page_length=200'
+    );
+    return (response.data.data ?? []).reduce((max, row) => {
+      return Math.max(max, extractBoxNumber(row.remarks));
+    }, 0);
+  } catch {
+    return 0;
+  }
+}
+
+type QueuedBox = {
+  tempId: string;
+  numCops: number;
+  boxWeight: number;
+  grossWeight: number;
+  tareWeight: number;
+  netWeight: number;
+  grade: GradeValue;
+  lotNo: string;
+};
+
 export default function AddStockPage() {
   const [itemCode, setItemCode] = useState("");
-  const [cops, setCops] = useState<number>(1);
-  const [tareWeight, setTareWeight] = useState<number>(0);
-  const [grossWeight, setGrossWeight] = useState<number>(0);
-  const [boxNumber, setBoxNumber] = useState<number>(1);
+  const [copWeight, setCopWeight] = useState<number>(0);
   const [warehouse, setWarehouse] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingItems, setLoadingItems] = useState(true);
@@ -53,7 +78,24 @@ export default function AddStockPage() {
   const [itemOptions, setItemOptions] = useState<string[]>([]);
   const [successMessage, setSuccessMessage] = useState("");
   const [useCustomFields, setUseCustomFields] = useState(false);
-  const netWeight = Math.max(0, grossWeight - tareWeight);
+  const [useGradeLotCustom, setUseGradeLotCustom] = useState(false);
+  const [nextBoxHint, setNextBoxHint] = useState(1);
+
+  const [draftCops, setDraftCops] = useState<number>(1);
+  const [draftBoxWeight, setDraftBoxWeight] = useState<number>(0);
+  const [draftGross, setDraftGross] = useState<number>(0);
+  const [draftGrade, setDraftGrade] = useState<GradeValue>("1st");
+  const [draftLot, setDraftLot] = useState("");
+
+  const [queue, setQueue] = useState<QueuedBox[]>([]);
+  const [printSlipsOnSubmit, setPrintSlipsOnSubmit] = useState(true);
+  /** Kept after submit so user can open print from a direct click (works when auto-print is blocked). */
+  const [slipsHtmlForPrint, setSlipsHtmlForPrint] = useState<string | null>(null);
+
+  const sessionLocked = queue.length > 0;
+
+  const draftTare = draftCops * copWeight + draftBoxWeight;
+  const draftNet = Math.max(0, draftGross - draftTare);
 
   useEffect(() => {
     const fetchStockItems = async () => {
@@ -91,11 +133,7 @@ export default function AddStockPage() {
   useEffect(() => {
     const detectCustomFields = async () => {
       try {
-        const response = await api.get("/api/method/frappe.client.get_meta", {
-          params: { doctype: "Stock Entry Detail" }
-        });
-        const fields = response.data?.message?.fields ?? [];
-        const names = new Set(fields.map((field: { fieldname?: string }) => field.fieldname));
+        const names = await fetchDoctypeFieldNames("Stock Entry Detail");
         const available =
           names.has(CUSTOM_FIELDS.box) &&
           names.has(CUSTOM_FIELDS.cops) &&
@@ -103,8 +141,12 @@ export default function AddStockPage() {
           names.has(CUSTOM_FIELDS.gross) &&
           names.has(CUSTOM_FIELDS.net);
         setUseCustomFields(available);
+        setUseGradeLotCustom(
+          names.has(CUSTOM_FIELDS.grade) && names.has(CUSTOM_FIELDS.lot)
+        );
       } catch {
         setUseCustomFields(false);
+        setUseGradeLotCustom(false);
       }
     };
     detectCustomFields();
@@ -113,19 +155,12 @@ export default function AddStockPage() {
   useEffect(() => {
     const fetchWarehouses = async () => {
       try {
-        const response = await api.get<WarehouseResponse>(
-          '/api/resource/Warehouse?fields=["name"]&filters=[["disabled","=",0],["is_group","=",0]]&limit_page_length=500'
-        );
-        const names = (response.data.data ?? [])
-          .map((row) => row.name || "")
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b));
-
-        if (names.length > 0) {
-          setWarehouse(names[0]);
+        const picked = await fetchAppWarehouseName();
+        if (picked) {
+          setWarehouse(picked);
         }
       } catch (error) {
-        alert(getApiErrorMessage(error, "Failed to fetch warehouse list."));
+        alert(getApiErrorMessage(error, "Failed to fetch finished goods warehouse."));
       } finally {
         setLoadingWarehouses(false);
       }
@@ -134,114 +169,217 @@ export default function AddStockPage() {
     fetchWarehouses();
   }, []);
 
-  useEffect(() => {
-    const fetchNextBoxNumber = async () => {
-      try {
-        const response = await api.get<StockEntryListResponse>(
-          '/api/resource/Stock Entry?fields=["remarks"]&filters=[["stock_entry_type","=","Material Receipt"]]&order_by=creation desc&limit_page_length=200'
-        );
-        const maxBox = (response.data.data ?? []).reduce((max, row) => {
-          return Math.max(max, extractBoxNumber(row.remarks));
-        }, 0);
-        setBoxNumber(maxBox + 1);
-      } catch {
-        // Keep default box number if lookup fails.
-      }
-    };
-
-    fetchNextBoxNumber();
+  const refreshNextBoxHint = useCallback(async () => {
+    const maxBox = await fetchMaxBoxNumber();
+    setNextBoxHint(maxBox + 1);
   }, []);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    refreshNextBoxHint();
+  }, [refreshNextBoxHint]);
+
+  const addToQueue = (e: FormEvent) => {
+    e.preventDefault();
     setSuccessMessage("");
 
-    try {
-      const remarks = `BOX:${boxNumber};COPS:${cops};TARE:${tareWeight};GROSS:${grossWeight};NET:${netWeight}`;
-      const createResponse = await api.post("/api/resource/Stock Entry", {
-        stock_entry_type: "Material Receipt",
-        remarks,
-        items: [
-          {
-            item_code: itemCode,
-            // Keep ERP qty aligned to net weight.
-            qty: netWeight,
-            t_warehouse: warehouse,
-            allow_zero_valuation_rate: 1,
-            basic_rate: 0,
-            ...(useCustomFields
-              ? {
-                  [CUSTOM_FIELDS.box]: boxNumber,
-                  [CUSTOM_FIELDS.cops]: cops,
-                  [CUSTOM_FIELDS.tare]: tareWeight,
-                  [CUSTOM_FIELDS.gross]: grossWeight,
-                  [CUSTOM_FIELDS.net]: netWeight
-                }
-              : {})
-          }
-        ]
-      });
-      const createdDoc = createResponse.data?.data;
-      const stockEntryName = createdDoc?.name;
-
-      if (stockEntryName) {
-        // Draft Stock Entry does not update Bin until submitted.
-        await api.post("/api/method/frappe.client.submit", {
-          doc: JSON.stringify(createdDoc)
-        });
-      }
-
-      setSuccessMessage(`Stock entry created successfully for Box ${boxNumber}.`);
-      setItemCode("");
-      setCops(1);
-      setTareWeight(0);
-      setGrossWeight(0);
-      setBoxNumber((prev) => prev + 1);
-    } catch (error) {
+    if (!itemCode) {
+      alert("Choose an item.");
+      return;
+    }
+    if (copWeight < 0 || Number.isNaN(copWeight)) {
+      alert("Cop weight must be zero or positive.");
+      return;
+    }
+    if (draftCops < 1 || !Number.isInteger(draftCops)) {
+      alert("Number of cops must be a whole number ≥ 1.");
+      return;
+    }
+    if (draftBoxWeight < 0 || Number.isNaN(draftBoxWeight)) {
+      alert("Box weight must be zero or positive.");
+      return;
+    }
+    if (draftGross <= 0) {
+      alert("Enter gross weight (scale reading).");
+      return;
+    }
+    const lotClean = sanitizeLotForRemarks(draftLot);
+    if (!lotClean) {
+      alert("Enter a lot number.");
+      return;
+    }
+    const tare = draftCops * copWeight + draftBoxWeight;
+    const net = draftGross - tare;
+    if (net <= 0) {
       alert(
-        getApiErrorMessage(
-          error,
-          "Failed to add stock. Please verify item and warehouse."
-        )
+        `Net weight must be positive. Gross (${draftGross}) must be greater than tare (${tare.toFixed(2)}).`
       );
-    } finally {
-      setLoading(false);
+      return;
+    }
+
+    setQueue((q) => [
+      ...q,
+      {
+        tempId: crypto.randomUUID(),
+        numCops: draftCops,
+        boxWeight: draftBoxWeight,
+        grossWeight: draftGross,
+        tareWeight: tare,
+        netWeight: net,
+        grade: draftGrade,
+        lotNo: lotClean
+      }
+    ]);
+    setDraftCops(1);
+    setDraftBoxWeight(0);
+    setDraftGross(0);
+    setDraftLot("");
+  };
+
+  const removeQueued = (tempId: string) => {
+    setQueue((q) => q.filter((row) => row.tempId !== tempId));
+  };
+
+  const submitAll = async () => {
+    if (queue.length === 0) return;
+    setLoading(true);
+    setSuccessMessage("");
+    setSlipsHtmlForPrint(null);
+
+    const startBox = (await fetchMaxBoxNumber()) + 1;
+    const snapshot = [...queue];
+
+    for (let i = 0; i < snapshot.length; i++) {
+      const row = snapshot[i];
+      const boxNo = startBox + i;
+      const remarks = `BOX:${boxNo};COPS:${row.numCops};GROSS:${row.grossWeight};TARE:${row.tareWeight};NET:${row.netWeight};COPW:${copWeight};GRADE:${row.grade};LOT:${row.lotNo}`;
+
+      try {
+        const createResponse = await api.post("/api/resource/Stock Entry", {
+          stock_entry_type: "Material Receipt",
+          remarks,
+          items: [
+            {
+              item_code: itemCode,
+              qty: row.netWeight,
+              t_warehouse: warehouse,
+              allow_zero_valuation_rate: 1,
+              basic_rate: 0,
+              ...(useCustomFields
+                ? {
+                    [CUSTOM_FIELDS.box]: boxNo,
+                    [CUSTOM_FIELDS.cops]: row.numCops,
+                    [CUSTOM_FIELDS.tare]: row.tareWeight,
+                    [CUSTOM_FIELDS.gross]: row.grossWeight,
+                    [CUSTOM_FIELDS.net]: row.netWeight
+                  }
+                : {}),
+              ...(useGradeLotCustom
+                ? {
+                    [CUSTOM_FIELDS.grade]: row.grade,
+                    [CUSTOM_FIELDS.lot]: row.lotNo
+                  }
+                : {})
+            }
+          ]
+        });
+        const createdDoc = createResponse.data?.data;
+        const stockEntryName = createdDoc?.name;
+
+        if (stockEntryName) {
+          await api.post("/api/method/frappe.client.submit", {
+            doc: JSON.stringify(createdDoc)
+          });
+        }
+      } catch (error) {
+        alert(
+          getApiErrorMessage(
+            error,
+            `Stopped at box ${boxNo} (${i + 1} of ${snapshot.length}). Earlier boxes were submitted. Remaining rows are still in your queue — fix or remove, then submit again.`
+          )
+        );
+        setQueue(snapshot.slice(i));
+        await refreshNextBoxHint();
+        setLoading(false);
+        return;
+      }
+    }
+
+    setQueue([]);
+    setSuccessMessage(
+      `Submitted ${snapshot.length} material receipt(s) for ${itemCode} (boxes ${startBox}–${startBox + snapshot.length - 1}).`
+    );
+    await refreshNextBoxHint();
+    setLoading(false);
+
+    if (printSlipsOnSubmit) {
+      const html = buildBoxSlipsHtmlDocument({
+        itemCode,
+        printedAt: new Date().toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short"
+        }),
+        slips: snapshot.map((row, i) => ({
+          boxNumber: startBox + i,
+          numCops: row.numCops,
+          boxWeight: row.boxWeight,
+          copWeight,
+          tareWeight: row.tareWeight,
+          grossWeight: row.grossWeight,
+          netWeight: row.netWeight,
+          grade: row.grade,
+          lotNo: row.lotNo
+        }))
+      });
+      setSlipsHtmlForPrint(html);
     }
   };
 
   return (
-    <section className="mx-auto w-full max-w-xl rounded-xl bg-white p-6 shadow-sm">
-      <h1 className="mb-6 text-2xl font-bold text-slate-900">Add Stock</h1>
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        {!useCustomFields && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Custom fields not detected on Stock Entry Item. Using remarks fallback.
-          </p>
-        )}
-        <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Box Number: <span className="font-semibold">{boxNumber}</span>
-        </div>
-        <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Using warehouse:{" "}
-          <span className="font-semibold">
-            {loadingWarehouses ? "Loading..." : warehouse || "Not found"}
-          </span>
-        </div>
+    <section className="mx-auto w-full max-w-2xl rounded-xl bg-white p-6 shadow-sm">
+      <h1 className="mb-2 text-2xl font-bold text-slate-900">Add stock</h1>
 
+
+      {(!useCustomFields || !useGradeLotCustom) && (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {!useCustomFields ?
+            "Weight custom fields not detected on Stock Entry Detail — weights use remarks only. "
+          : ""}
+          {!useGradeLotCustom ?
+            "Add optional fields on Stock Entry Detail named custom_grade and custom_lot_no to sync grade/lot to ERPNext; otherwise they are stored in remarks only."
+          : ""}
+        </p>
+      )}
+
+      <div className="mb-4 flex flex-wrap gap-3 rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <span>
+          Next box no. (after last in ERP):{" "}
+          <span className="font-semibold tabular-nums">{nextBoxHint}</span>
+        </span>
+        <span className="text-slate-400">|</span>
+        <span>
+          Finished goods warehouse:{" "}
+          <span className="font-semibold">
+            {loadingWarehouses ? "Loading…" : warehouse || "Not found"}
+          </span>
+          <span className="ml-1 text-slate-500">(fixed)</span>
+        </span>
+      </div>
+
+      <div className="mb-6 space-y-4 rounded-lg border border-slate-200 p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Session (one item &amp; cop weight)
+        </h2>
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            Item Code
-          </label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Item</label>
           <select
             value={itemCode}
             onChange={(e) => setItemCode(e.target.value)}
             required
-            className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
-            disabled={loadingItems}
+            disabled={loadingItems || sessionLocked}
+            className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
           >
             {loadingItems ? (
-              <option value="">Loading stock items...</option>
+              <option value="">Loading stock items…</option>
             ) : itemOptions.length > 0 ? (
               itemOptions.map((item) => (
                 <option key={item} value={item}>
@@ -249,71 +387,212 @@ export default function AddStockPage() {
                 </option>
               ))
             ) : (
-              <option value="">No stock items found. Create a new item.</option>
+              <option value="">No stock items found.</option>
             )}
           </select>
+          {sessionLocked && (
+            <p className="mt-1 text-xs text-slate-500">
+              Clear the queue below to change item or cop weight.
+            </p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Cops
-          </label>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={cops}
-            onChange={(e) => setCops(Number(e.target.value))}
-            required
-            className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            Tare weight ({WEIGHT_UNIT_LABEL})
+            Cop weight ({WEIGHT_UNIT_LABEL})
           </label>
           <input
             type="number"
             min="0"
-            step="0.01"
-            value={tareWeight}
-            onChange={(e) => setTareWeight(Number(e.target.value))}
-            required
-            className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+            step="0.001"
+            value={copWeight}
+            onChange={(e) => setCopWeight(Number(e.target.value))}
+            disabled={sessionLocked}
+            className="w-full max-w-xs rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
           />
+          <p className="mt-1 text-xs text-slate-500">
+            Weight per cop (packaging / tray per unit). Tare includes{" "}
+            <span className="font-medium">number of cops × this value</span>.
+          </p>
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            Gross weight ({WEIGHT_UNIT_LABEL})
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={grossWeight}
-            onChange={(e) => setGrossWeight(Number(e.target.value))}
-            required
-            className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
-          />
+      </div>
+
+      <form className="mb-6 space-y-4 rounded-lg border border-slate-200 p-4" onSubmit={addToQueue}>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Add a box</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">No. of cops</label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={draftCops}
+              onChange={(e) => setDraftCops(Number(e.target.value))}
+              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Box weight ({WEIGHT_UNIT_LABEL})
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={draftBoxWeight}
+              onChange={(e) => setDraftBoxWeight(Number(e.target.value))}
+              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+            />
+            <p className="mt-1 text-xs text-slate-500">Outer box / extra fixed tare</p>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              {weightLabel("Gross")}
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={draftGross}
+              onChange={(e) => setDraftGross(Number(e.target.value))}
+              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+            />
+          </div>
         </div>
-        <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Net weight ({WEIGHT_UNIT_LABEL}, gross − tare):{" "}
-          <span className="font-semibold">{netWeight.toFixed(2)}</span>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Grade</label>
+            <select
+              value={draftGrade}
+              onChange={(e) => setDraftGrade(e.target.value as GradeValue)}
+              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+            >
+              {GRADE_OPTIONS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Lot no.</label>
+            <input
+              type="text"
+              value={draftLot}
+              onChange={(e) => setDraftLot(e.target.value)}
+              placeholder="e.g. L-2025-001"
+              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+              autoComplete="off"
+            />
+            <p className="mt-1 text-xs text-slate-500">Semicolons are removed automatically.</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <span>
+            Tare (auto):{" "}
+            <strong className="tabular-nums text-slate-900">{draftTare.toFixed(2)}</strong>{" "}
+            {WEIGHT_UNIT_LABEL}
+          </span>
+          <span className="text-slate-300">|</span>
+          <span>
+            Net (gross − tare):{" "}
+            <strong className="tabular-nums text-slate-900">{draftNet.toFixed(2)}</strong>{" "}
+            {WEIGHT_UNIT_LABEL}
+          </span>
         </div>
         <button
           type="submit"
-          disabled={
-            loading ||
-            loadingItems ||
-            loadingWarehouses ||
-            itemOptions.length === 0 ||
-            !warehouse ||
-            netWeight <= 0
-          }
-          className="w-full rounded-xl bg-slate-900 px-4 py-3 text-lg font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-500"
+          disabled={loadingItems || !itemCode || loading}
+          className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Adding..." : "Submit Material Receipt"}
+          Add box to queue
         </button>
       </form>
+
+      {queue.length > 0 && (
+        <div className="mb-6 overflow-hidden rounded-lg border">
+          <div className="border-b bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800">
+            Queue ({queue.length} box{queue.length === 1 ? "" : "es"}) — {itemCode}, cop weight{" "}
+            {copWeight.toFixed(3)} {WEIGHT_UNIT_LABEL}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+                <tr>
+                  <th className="px-3 py-2">Grade</th>
+                  <th className="px-3 py-2">Lot</th>
+                  <th className="px-3 py-2">Cops</th>
+                  <th className="px-3 py-2">Box wt</th>
+                  <th className="px-3 py-2">Tare</th>
+                  <th className="px-3 py-2">Gross</th>
+                  <th className="px-3 py-2">Net</th>
+                  <th className="px-3 py-2 text-right"> </th>
+                </tr>
+              </thead>
+              <tbody>
+                {queue.map((row) => (
+                  <tr key={row.tempId} className="border-t border-slate-100">
+                    <td className="px-3 py-2 font-medium">{row.grade}</td>
+                    <td className="max-w-[8rem] truncate px-3 py-2 text-slate-800" title={row.lotNo}>
+                      {row.lotNo}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">{row.numCops}</td>
+                    <td className="px-3 py-2 tabular-nums">{row.boxWeight.toFixed(2)}</td>
+                    <td className="px-3 py-2 tabular-nums">{row.tareWeight.toFixed(2)}</td>
+                    <td className="px-3 py-2 tabular-nums">{row.grossWeight.toFixed(2)}</td>
+                    <td className="px-3 py-2 font-medium tabular-nums text-slate-900">
+                      {row.netWeight.toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => removeQueued(row.tempId)}
+                        className="text-xs font-semibold text-red-700 underline hover:text-red-900"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+        <input
+          type="checkbox"
+          checked={printSlipsOnSubmit}
+          onChange={(e) => setPrintSlipsOnSubmit(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300"
+        />
+        <span>
+          After a successful submit, show a <span className="font-semibold">Print box slips</span> button
+          (one page per box). Click it to open the print dialog — the browser must see a direct click, not an
+          automatic print after a long submit.
+        </span>
+      </label>
+
+      <button
+        type="button"
+        onClick={() => void submitAll()}
+        disabled={
+          loading ||
+          loadingItems ||
+          loadingWarehouses ||
+          itemOptions.length === 0 ||
+          !warehouse ||
+          queue.length === 0
+        }
+        className="w-full rounded-xl bg-slate-900 px-4 py-3 text-lg font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-500"
+      >
+        {loading ?
+          "Submitting…"
+        : queue.length === 0 ?
+          "Submit (add boxes to queue first)"
+        : `Submit ${queue.length} material receipt${queue.length === 1 ? "" : "s"}`}
+      </button>
 
       <div className="mt-4">
         <Link
@@ -329,6 +608,22 @@ export default function AddStockPage() {
           {successMessage}
         </p>
       )}
+
+      {slipsHtmlForPrint ? (
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="mb-3 text-sm text-slate-600">
+            Click below to print. This uses a hidden frame on this page only — no extra tab and no pop-up
+            permission.
+          </p>
+          <button
+            type="button"
+            onClick={() => printBoxSlipsHtml(slipsHtmlForPrint)}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Print box slips
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

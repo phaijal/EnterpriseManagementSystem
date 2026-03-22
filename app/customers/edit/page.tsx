@@ -9,6 +9,8 @@ type CustomerDoc = {
   name?: string;
   customer_name?: string;
   customer_primary_address?: string;
+  gstin?: string;
+  tax_id?: string;
 };
 
 type AddressDoc = {
@@ -17,7 +19,26 @@ type AddressDoc = {
   city?: string;
   pincode?: string;
   gstin?: string;
+  tax_id?: string;
 };
+
+async function setValueQuiet(
+  doctype: string,
+  name: string,
+  fieldname: string,
+  value: string
+) {
+  try {
+    await api.post("/api/method/frappe.client.set_value", {
+      doctype,
+      name,
+      fieldname,
+      value
+    });
+  } catch {
+    /* Field may not exist (e.g. tax_id vs gstin by region). */
+  }
+}
 
 function EditCustomerForm() {
   const searchParams = useSearchParams();
@@ -58,9 +79,10 @@ function EditCustomerForm() {
           setAddressLine(a?.address_line1 || "");
           setCity(a?.city || "NA");
           setPincode(a?.pincode || "");
-          setGstNo(a?.gstin || "");
+          setGstNo(a?.gstin || a?.tax_id || c?.gstin || c?.tax_id || "");
         } else {
           setAddressName(null);
+          setGstNo(c?.gstin || c?.tax_id || "");
         }
       } catch (error) {
         alert(getApiErrorMessage(error, "Failed to load customer."));
@@ -91,12 +113,15 @@ function EditCustomerForm() {
         value: customerName.trim()
       });
 
+      const gstVal = gstNo.trim();
+      await setValueQuiet("Customer", customerId, "gstin", gstVal);
+      await setValueQuiet("Customer", customerId, "tax_id", gstVal);
+
       if (addressName) {
         const fields: Array<[string, string]> = [
           ["address_line1", addressLine.trim()],
           ["city", city.trim() || "NA"],
-          ["pincode", pincode.trim()],
-          ["gstin", gstNo.trim()]
+          ["pincode", pincode.trim()]
         ];
         for (const [fieldname, value] of fields) {
           await api.post("/api/method/frappe.client.set_value", {
@@ -106,6 +131,8 @@ function EditCustomerForm() {
             value
           });
         }
+        await setValueQuiet("Address", addressName, "gstin", gstVal);
+        await setValueQuiet("Address", addressName, "tax_id", gstVal);
       }
 
       setSuccessMessage("Customer updated.");
@@ -163,7 +190,8 @@ function EditCustomerForm() {
             />
             {!addressName && (
               <p className="mt-1 text-xs text-amber-800">
-                No primary address on file; name-only update. Add a billing address in ERPNext if needed.
+                No primary address on file — GST is saved on the customer record only. Add a billing address
+                in ERPNext to edit street/city/pincode here.
               </p>
             )}
           </div>
@@ -183,9 +211,11 @@ function EditCustomerForm() {
             <input
               value={gstNo}
               onChange={(e) => setGstNo(e.target.value)}
-              disabled={!addressName}
-              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
+              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Saved on customer and on primary address when one exists (gstin / tax_id).
+            </p>
           </div>
 
           <div>
