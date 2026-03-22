@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { weightLabel } from "@/lib/units";
+import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
 
 type WarehouseResponse = {
   data: Array<{ name?: string }>;
@@ -84,6 +86,8 @@ function parseRemarks(remarks?: string) {
 export default function BoxesPage() {
   const [warehouse, setWarehouse] = useState("");
   const [rows, setRows] = useState<BoxRow[]>([]);
+  /** Stock Entry name → submitted Delivery Note name */
+  const [challanByStockEntry, setChallanByStockEntry] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
@@ -200,6 +204,8 @@ export default function BoxesPage() {
           })
           .filter((row): row is BoxRow => Boolean(row));
 
+        const lockMap = await fetchSubmittedChallanLockMap(api);
+        setChallanByStockEntry(Object.fromEntries(lockMap));
         setRows(mappedRows);
       } catch (error) {
         alert(getApiErrorMessage(error, "Failed to fetch boxes data."));
@@ -298,6 +304,8 @@ export default function BoxesPage() {
         })
         .filter((row): row is BoxRow => Boolean(row));
 
+      const lockMap = await fetchSubmittedChallanLockMap(api);
+      setChallanByStockEntry(Object.fromEntries(lockMap));
       setRows(mappedRows);
     } catch (error) {
       alert(getApiErrorMessage(error, "Failed to refresh boxes data."));
@@ -400,7 +408,8 @@ export default function BoxesPage() {
     <section className="mx-auto w-full max-w-5xl rounded-xl bg-white p-6 shadow-sm">
       <h1 className="mb-6 text-2xl font-bold text-slate-900">Boxes</h1>
       <p className="mb-4 rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-        Viewing warehouse: <span className="font-semibold">{warehouse || "Not found"}</span>
+        Viewing warehouse: <span className="font-semibold">{warehouse || "Not found"}</span>. Boxes on a
+        submitted challan cannot be edited; cancel the challan (All Challans) to release them.
       </p>
 
       <div className="mb-4">
@@ -426,9 +435,10 @@ export default function BoxesPage() {
                 <th className="px-4 py-3">Item Code</th>
                 <th className="px-4 py-3">Stock Name</th>
                 <th className="px-4 py-3">Cops</th>
-                <th className="px-4 py-3">Tare Weight</th>
-                <th className="px-4 py-3">Gross Weight</th>
-                <th className="px-4 py-3">Net Weight</th>
+                <th className="px-4 py-3">{weightLabel("Tare weight")}</th>
+                <th className="px-4 py-3">{weightLabel("Gross weight")}</th>
+                <th className="px-4 py-3">{weightLabel("Net weight")}</th>
+                <th className="px-4 py-3">Challan</th>
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
@@ -512,7 +522,18 @@ export default function BoxesPage() {
                         : row.net_weight}
                     </td>
                     <td className="px-4 py-3 text-slate-800">
-                      {editingEntry === row.stock_entry ? (
+                      {challanByStockEntry[row.stock_entry] ? (
+                        <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                          {challanByStockEntry[row.stock_entry]}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-800">
+                      {challanByStockEntry[row.stock_entry] ? (
+                        <span className="text-xs text-slate-500">On challan</span>
+                      ) : editingEntry === row.stock_entry ? (
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -548,7 +569,7 @@ export default function BoxesPage() {
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={8}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={9}>
                     No box records found.
                   </td>
                 </tr>

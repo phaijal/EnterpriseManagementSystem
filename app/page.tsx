@@ -6,8 +6,10 @@ const actions = [
   { href: "/boxes", label: "View Boxes" },
   { href: "/add-stock", label: "Add Stock" },
   { href: "/challan", label: "Create Challan" },
+  { href: "/challan/list", label: "All Challans" },
   { href: "/add-customer", label: "Add Customer" },
-  { href: "/add-item", label: "Add Item" }
+  { href: "/add-item", label: "Add Item" },
+  { href: "/settings/company", label: "Company & GST" }
 ];
 
 export default function DashboardPage() {

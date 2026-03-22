@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { WEIGHT_UNIT_LABEL } from "@/lib/units";
 
 type ItemRow = {
   item_code?: string;
@@ -268,7 +269,7 @@ export default function AddStockPage() {
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Tare Weight
+            Tare weight ({WEIGHT_UNIT_LABEL})
           </label>
           <input
             type="number"
@@ -282,7 +283,7 @@ export default function AddStockPage() {
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Gross Weight
+            Gross weight ({WEIGHT_UNIT_LABEL})
           </label>
           <input
             type="number"
@@ -295,7 +296,7 @@ export default function AddStockPage() {
           />
         </div>
         <div className="rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Net Weight (Gross - Tare):{" "}
+          Net weight ({WEIGHT_UNIT_LABEL}, gross − tare):{" "}
           <span className="font-semibold">{netWeight.toFixed(2)}</span>
         </div>
         <button

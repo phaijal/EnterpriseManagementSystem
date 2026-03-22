@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
 
@@ -27,6 +28,7 @@ type AddressListResponse = {
 };
 
 type CustomerRow = {
+  erpName: string;
   customer: string;
   address: string;
   gst: string;
@@ -99,6 +101,7 @@ export default function CustomersPage() {
             "";
           const addr = addrName ? addressByName[addrName] : undefined;
           return {
+            erpName: key,
             customer: customer.customer_name || customer.name || "-",
             address: [addr?.address_line1, addr?.city].filter(Boolean).join(", ") || "-",
             gst: addr?.gstin || "-",
@@ -132,21 +135,30 @@ export default function CustomersPage() {
                 <th className="px-4 py-3">Address</th>
                 <th className="px-4 py-3">GST No</th>
                 <th className="px-4 py-3">Pincode</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.length > 0 ? (
                 rows.map((row, index) => (
-                  <tr key={`${row.customer}-${index}`} className="border-t">
+                  <tr key={`${row.erpName}-${index}`} className="border-t">
                     <td className="px-4 py-3 text-slate-800">{row.customer}</td>
                     <td className="px-4 py-3 text-slate-800">{row.address}</td>
                     <td className="px-4 py-3 text-slate-800">{row.gst}</td>
                     <td className="px-4 py-3 text-slate-800">{row.pincode}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        href={`/customers/edit?name=${encodeURIComponent(row.erpName)}`}
+                        className="text-sm font-semibold text-slate-900 underline"
+                      >
+                        Edit
+                      </Link>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={4}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={5}>
                     No customers found.
                   </td>
                 </tr>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
+import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "ERPNext Frontend",
@@ -10,15 +11,12 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        <main className="mx-auto min-h-[calc(100vh-80px)] w-full max-w-5xl px-6 py-10">
-          {children}
-        </main>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

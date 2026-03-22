@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { weightLabel } from "@/lib/units";
 
 type StockResponse = {
   data: Array<{
@@ -204,9 +205,9 @@ export default function StockPage() {
                 <th className="px-4 py-3">Item Code</th>
                 <th className="px-4 py-3">Stock Name</th>
                 <th className="px-4 py-3">Cops</th>
-                <th className="px-4 py-3">Tare Weight</th>
-                <th className="px-4 py-3">Gross Weight</th>
-                <th className="px-4 py-3">Net Weight</th>
+                <th className="px-4 py-3">{weightLabel("Tare weight")}</th>
+                <th className="px-4 py-3">{weightLabel("Gross weight")}</th>
+                <th className="px-4 py-3">{weightLabel("Net weight")}</th>
               </tr>
             </thead>
             <tbody>
