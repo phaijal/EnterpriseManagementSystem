@@ -1,4 +1,6 @@
+import { LOT_ATTR_LABELS, parseLotAttrsFromRemarks } from "./itemLotAttributes";
 import { parseRemarkToken } from "./stockEntryRemarks";
+import { UI_LOT_NO } from "./uiLabels";
 import { WEIGHT_UNIT_LABEL, weightLabel } from "./units";
 
 function esc(s: string) {
@@ -18,7 +20,10 @@ export type BoxSlipRow = {
   grossWeight: number;
   netWeight: number;
   grade: string;
-  lotNo: string;
+  twist?: string;
+  shade?: string;
+  quality?: string;
+  machineNo?: string;
 };
 
 export type BoxSlipsDocumentOpts = {
@@ -38,7 +43,6 @@ export type BoxViewRowLike = {
   gross_weight: number | "-";
   net_weight: number;
   grade: string;
-  lot: string;
 };
 
 /**
@@ -65,6 +69,7 @@ export function slipRowFromBoxView(
   const copParsed = copWTok !== undefined ? Number(copWTok) : NaN;
   const copWeight = Number.isFinite(copParsed) ? copParsed : 0;
   const boxWeight = Math.max(0, tareW - numCops * copWeight);
+  const la = parseLotAttrsFromRemarks(stockEntryRemarks);
 
   return {
     boxNumber,
@@ -75,7 +80,10 @@ export function slipRowFromBoxView(
     grossWeight: grossW,
     netWeight: netW,
     grade: row.grade === "—" ? "—" : row.grade,
-    lotNo: row.lot === "—" ? "—" : row.lot
+    twist: la.twist || undefined,
+    shade: la.shade || undefined,
+    quality: la.quality || undefined,
+    machineNo: la.machineNo || undefined
   };
 }
 
@@ -106,6 +114,14 @@ function specRow(label: string, valueHtml: string) {
   return `<tr><th scope="row">${esc(label)}</th><td>${valueHtml}</td></tr>`;
 }
 
+function lotAttrSpecRows(s: BoxSlipRow): string {
+  const keys = ["twist", "shade", "quality", "machineNo"] as const;
+  return keys
+    .filter((k) => Boolean(s[k]?.trim()))
+    .map((k) => specRow(LOT_ATTR_LABELS[k], esc(s[k]!.trim())))
+    .join("\n          ");
+}
+
 export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
   const banner = opts.organizationName?.trim() || "Inventory label";
 
@@ -121,12 +137,12 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
           <span class="box-num">${s.boxNumber}</span>
         </div>
         <div class="item-block">
-          <span class="item-label">Item code</span>
+          <span class="item-label">${esc(UI_LOT_NO)}</span>
           <span class="item-code">${esc(opts.itemCode)}</span>
         </div>
         <table class="spec-table">
           ${specRow("Grade", esc(s.grade))}
-          ${specRow("Lot no.", esc(s.lotNo))}
+          ${lotAttrSpecRows(s)}
           ${specRow("No. of cops", `<span class="tabular">${s.numCops}</span>`)}
           ${specRow("Cop weight", `<span class="tabular">${s.copWeight.toFixed(3)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
           ${specRow("Box weight", `<span class="tabular">${s.boxWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}

@@ -5,6 +5,7 @@ import { TablePagination } from "@/components/TablePagination";
 import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
+import { UI_DENIER, UI_LOT_NO } from "@/lib/uiLabels";
 import { weightLabel } from "@/lib/units";
 
 type StockResponse = {
@@ -200,8 +201,8 @@ export default function StockPage() {
           <table className="w-full text-left">
             <thead className="bg-slate-100 text-sm font-semibold text-slate-700">
               <tr>
-                <th className="px-4 py-3">Item Code</th>
-                <th className="px-4 py-3">Stock Name</th>
+                <th className="px-4 py-3">{UI_LOT_NO}</th>
+                <th className="px-4 py-3">{UI_DENIER}</th>
                 <th className="px-4 py-3">Cops</th>
                 <th className="px-4 py-3">{weightLabel("Tare weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Gross weight")}</th>

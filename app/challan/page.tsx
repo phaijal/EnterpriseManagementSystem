@@ -8,6 +8,7 @@ import { encodeChallanPayload } from "@/lib/challanPayload";
 import { WEIGHT_UNIT_LABEL } from "@/lib/units";
 import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
 import { parseRemarkToken } from "@/lib/stockEntryRemarks";
+import { UI_DENIER, UI_LOT_NO } from "@/lib/uiLabels";
 
 type CustomerResponse = {
   data: Array<{
@@ -328,7 +329,7 @@ export default function ChallanPage() {
           qty: box.net,
           warehouse,
           allow_zero_valuation_rate: 1,
-          description: `${box.box_label} — ${box.item_name} (${box.item_code}) — COPS:${box.cops} GROSS:${box.gross} TARE:${box.tare} NET:${box.net}${gl} STOCK_ENTRY:${box.stock_entry}`
+          description: `${box.box_label} — ${UI_DENIER} ${box.item_name} · ${UI_LOT_NO} ${box.item_code} — COPS:${box.cops} GROSS:${box.gross} TARE:${box.tare} NET:${box.net}${gl} STOCK_ENTRY:${box.stock_entry}`
         };
       });
 
@@ -448,14 +449,16 @@ export default function ChallanPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Item filter</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Filter by {UI_LOT_NO}
+                  </label>
                   <select
                     value={itemCode}
                     onChange={(e) => setItemCode(e.target.value)}
                     disabled={!warehouse || loadingBoxes}
                     className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
                   >
-                    <option value="">All items</option>
+                    <option value="">All</option>
                     {itemOptions.map((code) => {
                       const sample = boxOptions.find(
                         (b) => b.warehouse === warehouse && b.item_code === code
@@ -495,8 +498,8 @@ export default function ChallanPage() {
                   <ul className="space-y-1">
                     {selectedBoxes.map((box) => (
                       <li key={box.stock_entry}>
-                        {box.box_label} · {box.item_name} ({box.item_code})
-                        {box.grade && box.lot ? ` · ${box.grade} · Lot ${box.lot}` : ""} · C {box.cops} · G{" "}
+                        {box.box_label} · {UI_DENIER} {box.item_name} · {UI_LOT_NO} {box.item_code}
+                        {box.grade ? ` · ${box.grade}` : ""} · C {box.cops} · G{" "}
                         {box.gross} {WEIGHT_UNIT_LABEL} · T {box.tare} {WEIGHT_UNIT_LABEL} · N {box.net}{" "}
                         {WEIGHT_UNIT_LABEL}
                       </li>
@@ -578,10 +581,8 @@ export default function ChallanPage() {
                           }}
                         />
                         <span>
-                        {box.box_label} — {box.item_name} ({box.item_code})
-                        {box.grade && box.lot ?
-                          ` · ${box.grade} · Lot ${box.lot}`
-                        : ""}{" "}
+                        {box.box_label} — {UI_DENIER} {box.item_name} · {UI_LOT_NO} {box.item_code}
+                        {box.grade ? ` · ${box.grade}` : ""}{" "}
                         — C {box.cops} · G {box.gross} {WEIGHT_UNIT_LABEL} · T {box.tare}{" "}
                         {WEIGHT_UNIT_LABEL} · N {box.net} {WEIGHT_UNIT_LABEL}
                         </span>

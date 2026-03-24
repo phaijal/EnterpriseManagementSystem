@@ -29,6 +29,7 @@ const groups: NavGroup[] = [
     title: "Inventory",
     items: [
       { href: "/stock", label: "View stock" },
+      { href: "/stock-report", label: "Detail stock report" },
       { href: "/boxes", label: "View boxes" },
       { href: "/add-stock", label: "Add stock" }
     ]
@@ -41,11 +42,11 @@ const groups: NavGroup[] = [
     ]
   },
   {
-    title: "Customers & items",
+    title: "Customers & lots",
     items: [
       { href: "/customers", label: "View customers", prefix: true },
       { href: "/add-customer", label: "Add customer" },
-      { href: "/add-item", label: "Add item" }
+      { href: "/add-item", label: "Add lot" }
     ]
   },
   {

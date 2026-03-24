@@ -9,7 +9,12 @@ import { fetchDoctypeFieldNames } from "@/lib/frappeMeta";
 import { weightLabel } from "@/lib/units";
 import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
 import { printSingleBoxSlip } from "@/lib/boxSlipPrint";
+import {
+  buildLotAttrsRemarkSuffix,
+  parseLotAttrsFromRemarks
+} from "@/lib/itemLotAttributes";
 import { GRADE_OPTIONS, parseRemarkToken, sanitizeLotForRemarks } from "@/lib/stockEntryRemarks";
+import { UI_DENIER, UI_LOT_NO } from "@/lib/uiLabels";
 
 type StockEntryListResponse = {
   data: Array<{
@@ -50,6 +55,10 @@ type BoxRow = {
   item_name: string;
   grade: string;
   lot: string;
+  twist: string;
+  shade: string;
+  quality: string;
+  machine_no: string;
   cops: number | "-";
   tare_weight: number | "-";
   gross_weight: number | "-";
@@ -63,7 +72,6 @@ type EditDraft = {
   tare_weight: number;
   gross_weight: number;
   grade: string;
-  lot: string;
 };
 
 const CUSTOM_FIELDS = {
@@ -204,6 +212,7 @@ export default function BoxesPage() {
               firstItem?.custom_lot_no?.trim() ||
               parseRemarkToken(entry.remarks, "LOT") ||
               "—";
+            const la = parseLotAttrsFromRemarks(entry.remarks);
 
             return {
               box: boxNumber ? `Box ${boxNumber}` : parsed.box,
@@ -211,6 +220,10 @@ export default function BoxesPage() {
               item_name: itemNameMap[itemCode] || itemCode,
               grade,
               lot,
+              twist: la.twist || "—",
+              shade: la.shade || "—",
+              quality: la.quality || "—",
+              machine_no: la.machineNo || "—",
               cops: cops ?? parsed.cops ?? "-",
               tare_weight: tare ?? parsed.tare ?? "-",
               gross_weight: gross ?? parsed.gross ?? "-",
@@ -307,6 +320,7 @@ export default function BoxesPage() {
             firstItem?.custom_lot_no?.trim() ||
             parseRemarkToken(entry.remarks, "LOT") ||
             "—";
+          const la = parseLotAttrsFromRemarks(entry.remarks);
 
           return {
             box: boxNumber ? `Box ${boxNumber}` : parsed.box,
@@ -314,6 +328,10 @@ export default function BoxesPage() {
             item_name: itemNameMap[itemCode] || itemCode,
             grade,
             lot,
+            twist: la.twist || "—",
+            shade: la.shade || "—",
+            quality: la.quality || "—",
+            machine_no: la.machineNo || "—",
             cops: cops ?? parsed.cops ?? "-",
             tare_weight: tare ?? parsed.tare ?? "-",
             gross_weight: gross ?? parsed.gross ?? "-",
@@ -341,19 +359,13 @@ export default function BoxesPage() {
       cops: typeof row.cops === "number" ? row.cops : 0,
       tare_weight: typeof row.tare_weight === "number" ? row.tare_weight : 0,
       gross_weight: typeof row.gross_weight === "number" ? row.gross_weight : 0,
-      grade: row.grade !== "—" ? row.grade : "1st",
-      lot: row.lot !== "—" ? row.lot : ""
+      grade: row.grade !== "—" ? row.grade : "1st"
     });
   };
 
   const saveEdit = async (row: BoxRow) => {
     if (!draft) return;
     const net = Math.max(0, draft.gross_weight - draft.tare_weight);
-    const lotClean = sanitizeLotForRemarks(draft.lot);
-    if (!lotClean) {
-      alert("Lot number is required.");
-      return;
-    }
     setSaving(true);
     try {
       // ERPNext blocks editing submitted remarks.
@@ -366,10 +378,17 @@ export default function BoxesPage() {
         throw new Error("Unable to load existing Stock Entry details.");
       }
 
+      const lotClean = sanitizeLotForRemarks(firstItem.item_code || "");
+      if (!lotClean) {
+        alert(`${UI_LOT_NO} is missing on this stock line.`);
+        return;
+      }
+
       const copw = parseRemarkToken(existingDoc.remarks, "COPW");
       let remarks = `BOX:${draft.box};COPS:${draft.cops};GROSS:${draft.gross_weight};TARE:${draft.tare_weight};NET:${net}`;
       if (copw !== undefined && copw !== "") remarks += `;COPW:${copw}`;
       remarks += `;GRADE:${draft.grade};LOT:${lotClean}`;
+      remarks += buildLotAttrsRemarkSuffix(parseLotAttrsFromRemarks(existingDoc.remarks));
 
       await api.post("/api/method/frappe.client.cancel", {
         doctype: "Stock Entry",
@@ -452,7 +471,19 @@ export default function BoxesPage() {
   const filteredRows = useMemo(() => {
     const term = filter.trim().toLowerCase();
     if (!term) return rows;
-    return rows.filter((row) => row.item_code.toLowerCase().includes(term));
+    return rows.filter((row) => {
+      const blob = [
+        row.item_code,
+        row.item_name,
+        row.twist,
+        row.shade,
+        row.quality,
+        row.machine_no
+      ]
+        .join(" ")
+        .toLowerCase();
+      return blob.includes(term);
+    });
   }, [rows, filter]);
 
   const { pageItems, page, setPage, totalPages, from, to, total } = useClientPagination(
@@ -474,12 +505,12 @@ export default function BoxesPage() {
 
       <div className="mb-4">
         <label className="mb-1 block text-sm font-medium text-slate-700">
-          Filter by Item Code
+          Filter by {UI_LOT_NO} or {UI_DENIER}
         </label>
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Type item code..."
+          placeholder={`Type ${UI_LOT_NO.toLowerCase()} or denier…`}
           className="w-full max-w-sm rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
         />
       </div>
@@ -492,10 +523,13 @@ export default function BoxesPage() {
             <thead className="bg-slate-100 text-sm font-semibold text-slate-700">
               <tr>
                 <th className="px-4 py-3">Box</th>
-                <th className="px-4 py-3">Item Code</th>
-                <th className="px-4 py-3">Stock Name</th>
+                <th className="px-4 py-3">{UI_LOT_NO}</th>
+                <th className="px-4 py-3">{UI_DENIER}</th>
                 <th className="px-4 py-3">Grade</th>
-                <th className="px-4 py-3">Lot</th>
+                <th className="px-4 py-3">Twist</th>
+                <th className="px-4 py-3">Shade</th>
+                <th className="px-4 py-3">Quality</th>
+                <th className="px-4 py-3">Mach.</th>
                 <th className="px-4 py-3">Cops</th>
                 <th className="px-4 py-3">{weightLabel("Tare weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Gross weight")}</th>
@@ -545,21 +579,17 @@ export default function BoxesPage() {
                         row.grade
                       )}
                     </td>
-                    <td className="max-w-[7rem] px-4 py-3 text-slate-800">
-                      {editingEntry === row.stock_entry && draft ? (
-                        <input
-                          type="text"
-                          value={draft.lot}
-                          onChange={(e) =>
-                            setDraft((prev) => (prev ? { ...prev, lot: e.target.value } : prev))
-                          }
-                          className="w-full rounded border px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        <span className="block truncate" title={row.lot}>
-                          {row.lot}
-                        </span>
-                      )}
+                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.twist}>
+                      {row.twist}
+                    </td>
+                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.shade}>
+                      {row.shade}
+                    </td>
+                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.quality}>
+                      {row.quality}
+                    </td>
+                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.machine_no}>
+                      {row.machine_no}
                     </td>
                     <td className="px-4 py-3 text-slate-800">
                       {editingEntry === row.stock_entry && draft ? (

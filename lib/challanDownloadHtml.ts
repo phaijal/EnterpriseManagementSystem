@@ -1,6 +1,7 @@
 import type { ChallanBoxLine } from "./challanPayload";
 import { sumBoxColumns } from "./challanPayload";
 import type { PartyPrintDetails } from "./challanPrintParties";
+import { UI_DENIER, UI_LOT_NO } from "./uiLabels";
 import { weightLabel } from "./units";
 
 function esc(s: string) {
@@ -46,7 +47,6 @@ export function buildChallanHtmlDocument(opts: {
       <td>${esc(b.item_code)}</td>
       <td>${esc(b.item_name || "—")}</td>
       <td>${esc(b.grade || "—")}</td>
-      <td>${esc(b.lot || "—")}</td>
       <td class="num">${b.cops.toFixed(2)}</td>
       <td class="num">${b.gross.toFixed(2)}</td>
       <td class="num">${b.tare.toFixed(2)}</td>
@@ -265,10 +265,9 @@ export function buildChallanHtmlDocument(opts: {
     <thead>
       <tr>
         <th>Box</th>
-        <th>Item code</th>
-        <th>Description</th>
+        <th>${esc(UI_LOT_NO)}</th>
+        <th>${esc(UI_DENIER)}</th>
         <th>Grade</th>
-        <th>Lot no.</th>
         <th class="num">Cops</th>
         <th class="num">${esc(weightLabel("Gross"))}</th>
         <th class="num">${esc(weightLabel("Tare"))}</th>
@@ -276,13 +275,13 @@ export function buildChallanHtmlDocument(opts: {
       </tr>
     </thead>
     <tbody>
-      ${rows || `<tr><td colspan="9">No line detail stored on this challan.</td></tr>`}
+      ${rows || `<tr><td colspan="8">No line detail stored on this challan.</td></tr>`}
     </tbody>
     ${
       opts.boxes.length > 0 ?
         `<tfoot>
       <tr>
-        <td colspan="5">Totals</td>
+        <td colspan="4">Totals</td>
         <td class="num">${sums.cops.toFixed(2)}</td>
         <td class="num">${sums.gross.toFixed(2)}</td>
         <td class="num">${sums.tare.toFixed(2)}</td>

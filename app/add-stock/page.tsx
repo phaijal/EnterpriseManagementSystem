@@ -6,11 +6,19 @@ import { api, getApiErrorMessage } from "@/lib/api";
 import { fetchDoctypeFieldNames } from "@/lib/frappeMeta";
 import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
 import {
+  buildLotAttrsRemarkSuffix,
+  EMPTY_LOT_ATTRS,
+  LOT_ATTR_LABELS,
+  lotAttrsFromItemDoc,
+  type LotAttrs
+} from "@/lib/itemLotAttributes";
+import {
   GRADE_OPTIONS,
   type GradeValue,
   sanitizeLotForRemarks
 } from "@/lib/stockEntryRemarks";
 import { buildBoxSlipsHtmlDocument, printBoxSlipsHtml } from "@/lib/boxSlipPrint";
+import { UI_LOT_NO } from "@/lib/uiLabels";
 import { WEIGHT_UNIT_LABEL, weightLabel } from "@/lib/units";
 
 type ItemRow = {
@@ -65,7 +73,6 @@ type QueuedBox = {
   tareWeight: number;
   netWeight: number;
   grade: GradeValue;
-  lotNo: string;
 };
 
 export default function AddStockPage() {
@@ -84,7 +91,8 @@ export default function AddStockPage() {
   const [draftBoxWeight, setDraftBoxWeight] = useState<number>(0);
   const [draftGross, setDraftGross] = useState<number>(0);
   const [draftGrade, setDraftGrade] = useState<GradeValue>("1st");
-  const [draftLot, setDraftLot] = useState("");
+  const [lotAttrs, setLotAttrs] = useState<LotAttrs>({ ...EMPTY_LOT_ATTRS });
+  const [loadingItemAttrs, setLoadingItemAttrs] = useState(false);
 
   const [queue, setQueue] = useState<QueuedBox[]>([]);
   const [printSlipsOnSubmit, setPrintSlipsOnSubmit] = useState(true);
@@ -118,7 +126,7 @@ export default function AddStockPage() {
         alert(
           getApiErrorMessage(
             error,
-            "Failed to fetch stock items for dropdown."
+            `Failed to fetch ${UI_LOT_NO.toLowerCase()} list.`
           )
         );
       } finally {
@@ -128,6 +136,30 @@ export default function AddStockPage() {
 
     fetchStockItems();
   }, []);
+
+  useEffect(() => {
+    if (!itemCode || sessionLocked) return;
+    let cancelled = false;
+    setLoadingItemAttrs(true);
+    const load = async () => {
+      try {
+        const res = await api.get<{ data?: Record<string, unknown> }>(
+          `/api/resource/Item/${encodeURIComponent(itemCode)}`
+        );
+        if (!cancelled) {
+          setLotAttrs(lotAttrsFromItemDoc(res.data?.data));
+        }
+      } catch {
+        if (!cancelled) setLotAttrs({ ...EMPTY_LOT_ATTRS });
+      } finally {
+        if (!cancelled) setLoadingItemAttrs(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [itemCode, sessionLocked]);
 
   useEffect(() => {
     const detectCustomFields = async () => {
@@ -181,7 +213,7 @@ export default function AddStockPage() {
     e.preventDefault();
 
     if (!itemCode) {
-      alert("Choose an item.");
+      alert(`Choose a ${UI_LOT_NO.toLowerCase()}.`);
       return;
     }
     if (copWeight < 0 || Number.isNaN(copWeight)) {
@@ -200,9 +232,9 @@ export default function AddStockPage() {
       alert("Enter gross weight (scale reading).");
       return;
     }
-    const lotClean = sanitizeLotForRemarks(draftLot);
-    if (!lotClean) {
-      alert("Enter a lot number.");
+    const lotToken = sanitizeLotForRemarks(itemCode);
+    if (!lotToken) {
+      alert(`Choose a valid ${UI_LOT_NO.toLowerCase()}.`);
       return;
     }
     const tare = draftCops * copWeight + draftBoxWeight;
@@ -223,14 +255,12 @@ export default function AddStockPage() {
         grossWeight: draftGross,
         tareWeight: tare,
         netWeight: net,
-        grade: draftGrade,
-        lotNo: lotClean
+        grade: draftGrade
       }
     ]);
     setDraftCops(1);
     setDraftBoxWeight(0);
     setDraftGross(0);
-    setDraftLot("");
   };
 
   const removeQueued = (tempId: string) => {
@@ -244,11 +274,14 @@ export default function AddStockPage() {
 
     const startBox = (await fetchMaxBoxNumber()) + 1;
     const snapshot = [...queue];
+    const lotToken = sanitizeLotForRemarks(itemCode);
 
     for (let i = 0; i < snapshot.length; i++) {
       const row = snapshot[i];
       const boxNo = startBox + i;
-      const remarks = `BOX:${boxNo};COPS:${row.numCops};GROSS:${row.grossWeight};TARE:${row.tareWeight};NET:${row.netWeight};COPW:${copWeight};GRADE:${row.grade};LOT:${row.lotNo}`;
+      const remarks =
+        `BOX:${boxNo};COPS:${row.numCops};GROSS:${row.grossWeight};TARE:${row.tareWeight};NET:${row.netWeight};COPW:${copWeight};GRADE:${row.grade};LOT:${lotToken}` +
+        buildLotAttrsRemarkSuffix(lotAttrs);
 
       try {
         const createResponse = await api.post("/api/resource/Stock Entry", {
@@ -273,7 +306,7 @@ export default function AddStockPage() {
               ...(useGradeLotCustom
                 ? {
                     [CUSTOM_FIELDS.grade]: row.grade,
-                    [CUSTOM_FIELDS.lot]: row.lotNo
+                    [CUSTOM_FIELDS.lot]: lotToken
                   }
                 : {})
             }
@@ -321,7 +354,10 @@ export default function AddStockPage() {
           grossWeight: row.grossWeight,
           netWeight: row.netWeight,
           grade: row.grade,
-          lotNo: row.lotNo
+          twist: lotAttrs.twist || undefined,
+          shade: lotAttrs.shade || undefined,
+          quality: lotAttrs.quality || undefined,
+          machineNo: lotAttrs.machineNo || undefined
         }))
       });
       setSlipsHtmlForPrint(html);
@@ -332,18 +368,6 @@ export default function AddStockPage() {
   return (
     <section className="mx-auto w-full max-w-2xl rounded-xl bg-white p-6 shadow-sm">
       <h1 className="mb-2 text-2xl font-bold text-slate-900">Add stock</h1>
-
-
-      {(!useCustomFields || !useGradeLotCustom) && (
-        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          {!useCustomFields ?
-            "Weight custom fields not detected on Stock Entry Detail — weights use remarks only. "
-          : ""}
-          {!useGradeLotCustom ?
-            "Add optional fields on Stock Entry Detail named custom_grade and custom_lot_no to sync grade/lot to ERPNext; otherwise they are stored in remarks only."
-          : ""}
-        </p>
-      )}
 
       <div className="mb-4 flex flex-wrap gap-3 rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
         <span>
@@ -362,10 +386,10 @@ export default function AddStockPage() {
 
       <div className="mb-6 space-y-4 rounded-lg border border-slate-200 p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Session (one item &amp; cop weight)
+          Session ({UI_LOT_NO.toLowerCase()}, attributes &amp; cop weight)
         </h2>
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Item</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">{UI_LOT_NO}</label>
           <select
             value={itemCode}
             onChange={(e) => setItemCode(e.target.value)}
@@ -374,7 +398,7 @@ export default function AddStockPage() {
             className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
           >
             {loadingItems ? (
-              <option value="">Loading stock items…</option>
+              <option value="">Loading…</option>
             ) : itemOptions.length > 0 ? (
               itemOptions.map((item) => (
                 <option key={item} value={item}>
@@ -382,14 +406,34 @@ export default function AddStockPage() {
                 </option>
               ))
             ) : (
-              <option value="">No stock items found.</option>
+              <option value="">No lots found.</option>
             )}
           </select>
           {sessionLocked && (
             <p className="mt-1 text-xs text-slate-500">
-              Clear the queue below to change item or cop weight.
+              Clear the queue below to change {UI_LOT_NO.toLowerCase()}, attributes, or cop weight.
             </p>
           )}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {(Object.keys(LOT_ATTR_LABELS) as (keyof LotAttrs)[]).map((key) => (
+            <div key={key}>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                {LOT_ATTR_LABELS[key]}
+              </label>
+              <input
+                type="text"
+                value={lotAttrs[key]}
+                onChange={(e) =>
+                  setLotAttrs((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+                disabled={sessionLocked}
+                className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
+                autoComplete="off"
+                placeholder={loadingItemAttrs ? "Loading…" : ""}
+              />
+            </div>
+          ))}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -453,33 +497,19 @@ export default function AddStockPage() {
             />
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Grade</label>
-            <select
-              value={draftGrade}
-              onChange={(e) => setDraftGrade(e.target.value as GradeValue)}
-              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
-            >
-              {GRADE_OPTIONS.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Lot no.</label>
-            <input
-              type="text"
-              value={draftLot}
-              onChange={(e) => setDraftLot(e.target.value)}
-              placeholder="e.g. L-2025-001"
-              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
-              autoComplete="off"
-            />
-            <p className="mt-1 text-xs text-slate-500">Semicolons are removed automatically.</p>
-          </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Grade</label>
+          <select
+            value={draftGrade}
+            onChange={(e) => setDraftGrade(e.target.value as GradeValue)}
+            className="w-full max-w-xs rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+          >
+            {GRADE_OPTIONS.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-wrap items-center gap-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
           <span>
@@ -506,15 +536,14 @@ export default function AddStockPage() {
       {queue.length > 0 && (
         <div className="mb-6 overflow-hidden rounded-lg border">
           <div className="border-b bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800">
-            Queue ({queue.length} box{queue.length === 1 ? "" : "es"}) — {itemCode}, cop weight{" "}
-            {copWeight.toFixed(3)} {WEIGHT_UNIT_LABEL}
+            Queue ({queue.length} box{queue.length === 1 ? "" : "es"}) — {UI_LOT_NO} {itemCode}, cop
+            weight {copWeight.toFixed(3)} {WEIGHT_UNIT_LABEL}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-slate-50 text-xs font-semibold uppercase text-slate-600">
                 <tr>
                   <th className="px-3 py-2">Grade</th>
-                  <th className="px-3 py-2">Lot</th>
                   <th className="px-3 py-2">Cops</th>
                   <th className="px-3 py-2">Box wt</th>
                   <th className="px-3 py-2">Tare</th>
@@ -527,9 +556,6 @@ export default function AddStockPage() {
                 {queue.map((row) => (
                   <tr key={row.tempId} className="border-t border-slate-100">
                     <td className="px-3 py-2 font-medium">{row.grade}</td>
-                    <td className="max-w-[8rem] truncate px-3 py-2 text-slate-800" title={row.lotNo}>
-                      {row.lotNo}
-                    </td>
                     <td className="px-3 py-2 tabular-nums">{row.numCops}</td>
                     <td className="px-3 py-2 tabular-nums">{row.boxWeight.toFixed(2)}</td>
                     <td className="px-3 py-2 tabular-nums">{row.tareWeight.toFixed(2)}</td>
@@ -590,7 +616,7 @@ export default function AddStockPage() {
           href="/add-item"
           className="text-sm font-medium text-slate-700 underline hover:text-slate-900"
         >
-          No item in list? Create a new stock item
+          Missing a {UI_LOT_NO.toLowerCase()}? Create one
         </Link>
       </div>
 

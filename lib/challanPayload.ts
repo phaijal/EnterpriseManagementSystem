@@ -57,8 +57,8 @@ export function decodeChallanPayload(remarks?: string): ChallanPayload | null {
 
 /**
  * Parse our line description saved on Delivery Note Item:
- * `Box 1 — Item Name (ITEMCODE) — COPS:1 GROSS:10 TARE:0 NET:10` (legacy: TARE before GROSS still parses)
- * (em dash, en dash, or hyphen between segments)
+ * Legacy: `Box 1 — Item Name (ITEMCODE) — COPS:1 GROSS:10 TARE:0 NET:10`
+ * Current UI: `Box 1 — Denier Name · Lot no. ITEMCODE — COPS:...` (TARE before GROSS still parses)
  */
 function normalizeDnDescriptionText(text: string): string {
   const stripped = text.replace(/<[^>]+>/g, " ");
@@ -101,20 +101,41 @@ export function parseBoxLineFromDnDescription(text?: string | null): Partial<Cha
   const head = (headEnd >= 0 ? normalized.slice(0, headEnd) : normalized).trim();
   const splitRe = /^(.+?)\s*[—\u2013\-]\s+(.+?)\s+\(([^)]*)\)\s*$/;
   const m = head.match(splitRe);
-  if (!m) {
-    return { box_label: head || "—", cops, tare, gross, net, grade, lot };
+  if (m) {
+    return {
+      box_label: m[1].trim(),
+      item_name: m[2].trim(),
+      item_code: m[3].trim(),
+      cops,
+      tare,
+      gross,
+      net,
+      grade,
+      lot
+    };
   }
-  return {
-    box_label: m[1].trim(),
-    item_name: m[2].trim(),
-    item_code: m[3].trim(),
-    cops,
-    tare,
-    gross,
-    net,
-    grade,
-    lot
-  };
+
+  const lotParts = head.split(/\s·\s+Lot no\.\s+/i);
+  if (lotParts.length === 2) {
+    const itemCodeFromHead = lotParts[1].trim();
+    const left = lotParts[0].trim();
+    const dm = left.match(/^(.+?)\s*[—\u2013\-]\s+Denier\s+(.+)$/i);
+    if (dm && itemCodeFromHead) {
+      return {
+        box_label: dm[1].trim(),
+        item_name: dm[2].trim(),
+        item_code: itemCodeFromHead,
+        cops,
+        tare,
+        gross,
+        net,
+        grade,
+        lot
+      };
+    }
+  }
+
+  return { box_label: head || "—", cops, tare, gross, net, grade, lot };
 }
 
 export function parseBoxLabelsFromRemarks(remarks?: string): string[] {
