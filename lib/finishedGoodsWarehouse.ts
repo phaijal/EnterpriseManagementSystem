@@ -6,6 +6,39 @@ import { api } from "./api";
  */
 export const FINISHED_GOODS_WAREHOUSE_TYPE = "Finished Goods";
 
+/**
+ * ERPNext Company.create_default_warehouses creates "Goods In Transit" with this Warehouse Type.
+ * The master must exist or company creation fails with LinkValidationError.
+ */
+export const TRANSIT_WAREHOUSE_TYPE = "Transit";
+
+const WAREHOUSE_TYPE_DOCTYPE = "Warehouse Type";
+
+/** Masters Company bootstrap may reference; safe to no-op if already present. */
+const WAREHOUSE_TYPES_TO_ENSURE_BEFORE_NEW_COMPANY = [
+  TRANSIT_WAREHOUSE_TYPE,
+  FINISHED_GOODS_WAREHOUSE_TYPE
+] as const;
+
+/**
+ * Ensures Warehouse Type rows exist before POST /api/resource/Company.
+ * Does not replace fetchAppWarehouseName — warehouses do not exist until after the company is created.
+ */
+export async function ensureWarehouseTypesForCompanyCreate(): Promise<void> {
+  const base = `/api/resource/${encodeURIComponent(WAREHOUSE_TYPE_DOCTYPE)}`;
+  for (const typeName of WAREHOUSE_TYPES_TO_ENSURE_BEFORE_NEW_COMPANY) {
+    try {
+      await api.get(`${base}/${encodeURIComponent(typeName)}`);
+    } catch {
+      try {
+        await api.post(base, { name: typeName });
+      } catch {
+        /* duplicate, permissions, or site policy */
+      }
+    }
+  }
+}
+
 export type WarehouseListRow = {
   name?: string;
   warehouse_type?: string | null;

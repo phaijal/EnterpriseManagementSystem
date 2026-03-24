@@ -43,10 +43,47 @@ export type BinRecord = {
   actual_qty: number;
 };
 
-export function getApiErrorMessage(error: unknown, fallback: string) {
-  const axiosError = error as AxiosError<{ message?: string; exception?: string }>;
-  const apiMessage =
-    axiosError.response?.data?.message || axiosError.response?.data?.exception;
+function extractFrappeServerMessages(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  try {
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return undefined;
+    const parts = arr.map((item) => {
+      if (typeof item === "string") {
+        try {
+          const o = JSON.parse(item) as { message?: string };
+          return typeof o.message === "string" ? o.message : item;
+        } catch {
+          return item;
+        }
+      }
+      return String(item);
+    });
+    const joined = parts.filter(Boolean).join("\n").trim();
+    return joined || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
-  return apiMessage ? `${fallback}\n${apiMessage}` : fallback;
+export function getApiErrorMessage(error: unknown, fallback: string) {
+  const axiosError = error as AxiosError<Record<string, unknown>>;
+  const data = axiosError.response?.data;
+  if (!data || typeof data !== "object") {
+    return fallback;
+  }
+
+  const msg = data.message;
+  const messageStr = typeof msg === "string" ? msg : undefined;
+  const exceptionStr = typeof data.exception === "string" ? data.exception : undefined;
+  const excStr = typeof data.exc === "string" ? data.exc : undefined;
+  const serverMessages = extractFrappeServerMessages(data._server_messages);
+
+  const apiMessage =
+    messageStr ||
+    serverMessages ||
+    exceptionStr ||
+    (excStr ? excStr.split("\n").pop()?.trim() : undefined);
+
+  return apiMessage ? `${fallback}\n\n${apiMessage}` : fallback;
 }

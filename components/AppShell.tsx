@@ -51,7 +51,10 @@ const groups: NavGroup[] = [
   },
   {
     title: "Settings",
-    items: [{ href: "/settings/company", label: "Company & GST" }]
+    items: [
+      { href: "/settings/company", label: "Company & GST", prefix: true },
+      { href: "/settings/company/add", label: "Add company", exact: true }
+    ]
   }
 ];
 

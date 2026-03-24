@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getApiErrorMessage } from "@/lib/api";
@@ -105,14 +106,27 @@ export default function DashboardPage() {
           </form>
         </div>
       ) : (
-        <div className="max-w-md text-center">
+        <div className="w-full max-w-lg space-y-6 text-center">
           <p className="text-sm text-slate-600">
             Signed in as{" "}
             <span className="font-semibold text-slate-900">{user}</span>.
           </p>
-          <p className="mt-3 text-sm text-slate-500">
-            Use the navigation menu to open stock, challans, customers, and
-            settings.
+
+          <Link
+            href="/settings/company"
+            className="block w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md"
+          >
+            <h2 className="text-lg font-semibold text-slate-900">Company &amp; GST</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              View or edit legal name, GSTIN, PAN, and registered address.
+            </p>
+            <span className="mt-3 inline-block text-sm font-semibold text-slate-900 underline">
+              Open →
+            </span>
+          </Link>
+
+          <p className="text-sm text-slate-500">
+            Use the menu for stock, challans, customers, and other tools.
           </p>
         </div>
       )}
