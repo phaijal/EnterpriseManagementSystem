@@ -76,7 +76,6 @@ export default function AddStockPage() {
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingWarehouses, setLoadingWarehouses] = useState(true);
   const [itemOptions, setItemOptions] = useState<string[]>([]);
-  const [successMessage, setSuccessMessage] = useState("");
   const [useCustomFields, setUseCustomFields] = useState(false);
   const [useGradeLotCustom, setUseGradeLotCustom] = useState(false);
   const [nextBoxHint, setNextBoxHint] = useState(1);
@@ -89,7 +88,7 @@ export default function AddStockPage() {
 
   const [queue, setQueue] = useState<QueuedBox[]>([]);
   const [printSlipsOnSubmit, setPrintSlipsOnSubmit] = useState(true);
-  /** Kept after submit so user can open print from a direct click (works when auto-print is blocked). */
+  /** Last generated slips HTML — used for “Print again” if the post-submit print was blocked or cancelled. */
   const [slipsHtmlForPrint, setSlipsHtmlForPrint] = useState<string | null>(null);
 
   const sessionLocked = queue.length > 0;
@@ -180,7 +179,6 @@ export default function AddStockPage() {
 
   const addToQueue = (e: FormEvent) => {
     e.preventDefault();
-    setSuccessMessage("");
 
     if (!itemCode) {
       alert("Choose an item.");
@@ -242,7 +240,6 @@ export default function AddStockPage() {
   const submitAll = async () => {
     if (queue.length === 0) return;
     setLoading(true);
-    setSuccessMessage("");
     setSlipsHtmlForPrint(null);
 
     const startBox = (await fetchMaxBoxNumber()) + 1;
@@ -305,9 +302,6 @@ export default function AddStockPage() {
     }
 
     setQueue([]);
-    setSuccessMessage(
-      `Submitted ${snapshot.length} material receipt(s) for ${itemCode} (boxes ${startBox}–${startBox + snapshot.length - 1}).`
-    );
     await refreshNextBoxHint();
     setLoading(false);
 
@@ -331,6 +325,7 @@ export default function AddStockPage() {
         }))
       });
       setSlipsHtmlForPrint(html);
+      printBoxSlipsHtml(html);
     }
   };
 
@@ -560,18 +555,14 @@ export default function AddStockPage() {
         </div>
       )}
 
-      <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+      <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
         <input
           type="checkbox"
           checked={printSlipsOnSubmit}
           onChange={(e) => setPrintSlipsOnSubmit(e.target.checked)}
           className="h-4 w-4 rounded border-slate-300"
         />
-        <span>
-          After a successful submit, show a <span className="font-semibold">Print box slips</span> button
-          (one page per box). Click it to open the print dialog — the browser must see a direct click, not an
-          automatic print after a long submit.
-        </span>
+        <span>Print box slips</span>
       </label>
 
       <button
@@ -603,24 +594,14 @@ export default function AddStockPage() {
         </Link>
       </div>
 
-      {successMessage && (
-        <p className="mt-4 rounded-lg bg-emerald-100 px-3 py-2 text-sm text-emerald-800">
-          {successMessage}
-        </p>
-      )}
-
       {slipsHtmlForPrint ? (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="mb-3 text-sm text-slate-600">
-            Click below to print. This uses a hidden frame on this page only — no extra tab and no pop-up
-            permission.
-          </p>
+        <div className="mt-4">
           <button
             type="button"
             onClick={() => printBoxSlipsHtml(slipsHtmlForPrint)}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
-            Print box slips
+            Print again
           </button>
         </div>
       ) : null}
