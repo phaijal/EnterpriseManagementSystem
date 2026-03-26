@@ -17,11 +17,7 @@ type UomResponse = {
   }>;
 };
 
-type ItemGroupResponse = {
-  data: Array<{
-    name?: string;
-  }>;
-};
+const FIXED_ITEM_GROUP = "Products";
 
 function pickDefaultStockUom(uoms: string[]): string {
   const preferred = ["Kg", "Kgs", "kg", "kgs", "KG"];
@@ -46,7 +42,6 @@ export default function AddItemPage() {
   const [itemCode, setItemCode] = useState("");
   const [itemName, setItemName] = useState("");
   const [stockUom, setStockUom] = useState("Kg");
-  const [defaultItemGroup, setDefaultItemGroup] = useState("");
   const [uomOptions, setUomOptions] = useState<string[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -64,14 +59,9 @@ export default function AddItemPage() {
         await ensureUom(api, "Kgs");
         await ensureUom(api, "Kg");
 
-        const [uomRes, itemGroupRes] = await Promise.all([
-          api.get<UomResponse>(
-            '/api/resource/UOM?fields=["name","uom_name"]&limit_page_length=500'
-          ),
-          api.get<ItemGroupResponse>(
-            '/api/resource/Item Group?fields=["name"]&filters=[["is_group","=",0]]&limit_page_length=200'
-          )
-        ]);
+        const uomRes = await api.get<UomResponse>(
+          '/api/resource/UOM?fields=["name","uom_name"]&limit_page_length=500'
+        );
 
         const uoms = Array.from(
           new Set(
@@ -84,12 +74,6 @@ export default function AddItemPage() {
         setUomOptions(uoms);
         const def = pickDefaultStockUom(uoms);
         if (def) setStockUom(def);
-
-        const groups = (itemGroupRes.data.data ?? [])
-          .map((row) => row.name || "")
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b));
-        if (groups.length > 0) setDefaultItemGroup(groups[0]);
       } catch (error) {
         alert(getApiErrorMessage(error, "Failed to fetch form options."));
       } finally {
@@ -105,20 +89,15 @@ export default function AddItemPage() {
     setLoading(true);
     setSuccessMessage("");
 
-    if (!defaultItemGroup) {
-      alert("No item group found in ERPNext. Create at least one Item Group (non-group) in ERPNext.");
-      setLoading(false);
-      return;
-    }
-
     try {
       const attrBlock = buildItemDescriptionLotAttrs(lotAttrs);
+      const finalStockUom = stockUom.trim() || "Kg";
       const payload: Record<string, unknown> = {
         item_code: itemCode,
         item_name: itemName,
         is_stock_item: 1,
-        item_group: defaultItemGroup,
-        stock_uom: stockUom
+        item_group: FIXED_ITEM_GROUP,
+        stock_uom: finalStockUom
       };
       if (attrBlock) payload.description = attrBlock;
 
@@ -215,10 +194,16 @@ export default function AddItemPage() {
             Defaults to Kg or Kgs when present. The app tries to create Kg/Kgs in ERPNext if missing.
           </p>
         </div>
+        {!loadingMeta && uomOptions.length === 0 ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Create lot is disabled until at least one <strong>UOM</strong> exists (Desk → Stock → UOM).
+          </p>
+        ) : null}
 
         <button
           type="submit"
-          disabled={loading || loadingMeta || !stockUom || !defaultItemGroup}
+          disabled={loading}
+          title={`Item group: ${FIXED_ITEM_GROUP}`}
           className="w-full rounded-xl bg-slate-900 px-4 py-3 text-lg font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-500"
         >
           {loading ? "Creating…" : "Create lot"}

@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
-import { fetchCompanyMerged, resolveCompanyPan } from "@/lib/companyDoc";
+import {
+  fetchCompanyMerged,
+  pickGstinFromCompanyRecord,
+  resolveCompanyPan,
+  saveCompanyPanValue
+} from "@/lib/companyDoc";
 import { ensureAddressTemplatesForCountry } from "@/lib/erpnextAddressTemplate";
 
 type CompanyListRow = {
@@ -126,11 +131,7 @@ export default function CompanySettingsPage() {
           (typeof merged.name === "string" && merged.name) ||
           ""
       );
-      const gst =
-        (typeof merged.gstin === "string" && merged.gstin) ||
-        (typeof merged.tax_id === "string" && merged.tax_id) ||
-        "";
-      setGstin(gst);
+      setGstin(pickGstinFromCompanyRecord(merged));
       setPan(await resolveCompanyPan(id, merged));
       const cc = (typeof merged.country === "string" ? merged.country : "").trim();
       setCompanyCountry(cc);
@@ -243,10 +244,9 @@ export default function CompanySettingsPage() {
       const panVal = pan.trim();
       await setCompanyFieldQuiet(selectedId, "gstin", gstVal);
       await setCompanyFieldQuiet(selectedId, "tax_id", gstVal);
-      await setCompanyFieldQuiet(selectedId, "pan", panVal);
-      await setCompanyFieldQuiet(selectedId, "pan_no", panVal);
-      await setCompanyFieldQuiet(selectedId, "company_pan", panVal);
-      await setCompanyFieldQuiet(selectedId, "custom_pan", panVal);
+
+      const mergedForPan = await fetchCompanyMerged(selectedId);
+      await saveCompanyPanValue(selectedId, panVal, mergedForPan);
 
       const addrLine = addressLine.trim();
       const cityVal = city.trim();

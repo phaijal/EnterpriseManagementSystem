@@ -33,16 +33,24 @@ export async function ensureAddressTemplatesForCountry(countryHint: string): Pro
   }
 
   try {
-    await api.get(`${ADDRESS_TEMPLATE_RESOURCE}/${encodeURIComponent(country)}`);
-    await api.post("/api/method/frappe.client.set_value", {
-      doctype: "Address Template",
-      name: country,
-      fieldname: "is_default",
-      value: 1
+    const byName = await api.get<{ data?: unknown[] }>(ADDRESS_TEMPLATE_RESOURCE, {
+      params: {
+        filters: JSON.stringify([["name", "=", country]]),
+        fields: JSON.stringify(["name"]),
+        limit_page_length: 1
+      }
     });
-    return;
+    if ((byName.data?.data ?? []).length > 0) {
+      await api.post("/api/method/frappe.client.set_value", {
+        doctype: "Address Template",
+        name: country,
+        fieldname: "is_default",
+        value: 1
+      });
+      return;
+    }
   } catch {
-    /* no row for this country */
+    /* list failed */
   }
 
   await api.post(ADDRESS_TEMPLATE_RESOURCE, {

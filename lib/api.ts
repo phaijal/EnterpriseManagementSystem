@@ -66,6 +66,54 @@ function extractFrappeServerMessages(raw: unknown): string | undefined {
   }
 }
 
+/**
+ * Frappe often returns HTTP 200 with errors in the JSON body (`exc`, `exception`).
+ * Use this after POST /api/method/* to detect failed saves.
+ */
+export function getFrappeSuccessResponseError(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+  if (d.exc_type && d.exc_type !== "") {
+    const ex = d.exception;
+    if (typeof ex === "string" && ex.trim()) return ex.trim();
+    return String(d.exc_type);
+  }
+  if (typeof d.exception === "string" && d.exception.trim()) return d.exception.trim();
+  if (typeof d.exc === "string" && d.exc.trim()) {
+    const s = d.exc.trim();
+    try {
+      const parsed = JSON.parse(s) as unknown;
+      if (Array.isArray(parsed) && parsed[0] && typeof parsed[0] === "string") {
+        return parsed[0].slice(0, 800);
+      }
+    } catch {
+      /* raw traceback string */
+    }
+    return s.slice(0, 800);
+  }
+  if (typeof d._server_messages === "string") {
+    try {
+      const arr = JSON.parse(d._server_messages) as unknown;
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (typeof item !== "string") continue;
+          try {
+            const o = JSON.parse(item) as { raise_exception?: number; message?: string };
+            if (o.raise_exception === 1 && typeof o.message === "string" && o.message.trim()) {
+              return o.message.trim().slice(0, 800);
+            }
+          } catch {
+            /* */
+          }
+        }
+      }
+    } catch {
+      /* */
+    }
+  }
+  return null;
+}
+
 export function getApiErrorMessage(error: unknown, fallback: string) {
   const axiosError = error as AxiosError<Record<string, unknown>>;
   const data = axiosError.response?.data;

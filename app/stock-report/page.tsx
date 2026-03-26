@@ -13,6 +13,7 @@ import {
   type ReportDataRow,
   type ReportTableRow
 } from "@/lib/detailStockReport";
+import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
 import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
 import { parseLotAttrsFromRemarks } from "@/lib/itemLotAttributes";
 import { parseRemarkToken } from "@/lib/stockEntryRemarks";
@@ -117,7 +118,8 @@ export default function StockReportPage() {
         }
       });
 
-      const entries = listRes.data.data ?? [];
+      const lockMap = await fetchSubmittedChallanLockMap(api);
+      const entries = (listRes.data.data ?? []).filter((entry) => !lockMap.has(entry.name));
       if (entries.length === 0) {
         setRows([]);
         setLoading(false);

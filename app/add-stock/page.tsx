@@ -424,10 +424,8 @@ export default function AddStockPage() {
               <input
                 type="text"
                 value={lotAttrs[key]}
-                onChange={(e) =>
-                  setLotAttrs((prev) => ({ ...prev, [key]: e.target.value }))
-                }
-                disabled={sessionLocked}
+                readOnly
+                disabled
                 className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring disabled:bg-slate-100"
                 autoComplete="off"
                 placeholder={loadingItemAttrs ? "Loading…" : ""}
@@ -435,6 +433,9 @@ export default function AddStockPage() {
             </div>
           ))}
         </div>
+        <p className="text-xs text-slate-500">
+          Lot attributes are read from the selected lot and cannot be edited while adding stock.
+        </p>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
             Cop weight ({WEIGHT_UNIT_LABEL})
