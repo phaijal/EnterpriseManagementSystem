@@ -560,7 +560,7 @@ export default function BoxesPage() {
         <p className="text-slate-600">Loading boxes...</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
-          <table className="min-w-[1200px] w-full text-left">
+          <table className="min-w-[980px] w-full text-left">
             <thead className="bg-slate-100 text-sm font-semibold text-slate-700">
               <tr>
                 <th className="px-4 py-3">Box</th>
@@ -571,8 +571,7 @@ export default function BoxesPage() {
                 <th className="px-4 py-3">{weightLabel("Gross weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Net weight")}</th>
                 <th className="px-4 py-3">Challan</th>
-                <th className="px-4 py-3">Slip</th>
-                <th className="px-4 py-3">Action</th>
+                <th className="sticky right-0 z-10 bg-slate-100 px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -595,43 +594,36 @@ export default function BoxesPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-800">{row.item_code}</td>
-                    <td className="px-4 py-3 text-slate-800">
-                      <div className="space-y-1 text-xs leading-5">
-                        <p className="truncate" title={row.item_name}>
-                          <span className="font-medium">{UI_DENIER}:</span> {row.item_name}
-                        </p>
-                        <p className="truncate" title={row.twist}>
-                          <span className="font-medium">Twist:</span> {row.twist}
-                        </p>
-                        <p className="truncate" title={row.shade}>
-                          <span className="font-medium">Shade:</span> {row.shade}
-                        </p>
-                        <p className="truncate" title={row.quality}>
-                          <span className="font-medium">Quality:</span> {row.quality}
-                        </p>
-                        <p className="truncate" title={row.machine_no}>
-                          <span className="font-medium">Mach.:</span> {row.machine_no}
-                        </p>
-                        <div className="pt-0.5">
-                          <span className="mr-2 font-medium">Grade:</span>
-                          {editingEntry === row.stock_entry && draft ? (
-                            <select
-                              value={draft.grade}
-                              onChange={(e) =>
-                                setDraft((prev) => (prev ? { ...prev, grade: e.target.value } : prev))
-                              }
-                              className="min-w-[5rem] rounded border px-1 py-0.5 text-xs"
-                            >
-                              {GRADE_OPTIONS.map((g) => (
-                                <option key={g} value={g}>
-                                  {g}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span>{row.grade}</span>
-                          )}
-                        </div>
+                    <td className="px-4 py-3 text-xs text-slate-800">
+                      <div className="max-w-[34rem] truncate" title={`${row.item_name} | Grade: ${row.grade} | Twist: ${row.twist} | Shade: ${row.shade} | Quality: ${row.quality} | Mach: ${row.machine_no}`}>
+                        <span className="font-medium">{row.item_name}</span>
+                        <span className="mx-2 text-slate-400">|</span>
+                        <span className="font-medium">G:</span>{" "}
+                        {editingEntry === row.stock_entry && draft ? (
+                          <select
+                            value={draft.grade}
+                            onChange={(e) =>
+                              setDraft((prev) => (prev ? { ...prev, grade: e.target.value } : prev))
+                            }
+                            className="mx-1 min-w-[4.5rem] rounded border px-1 py-0.5 text-xs"
+                          >
+                            {GRADE_OPTIONS.map((g) => (
+                              <option key={g} value={g}>
+                                {g}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          row.grade
+                        )}
+                        <span className="mx-2 text-slate-400">|</span>
+                        <span className="font-medium">T:</span> {row.twist}
+                        <span className="mx-2 text-slate-400">|</span>
+                        <span className="font-medium">S:</span> {row.shade}
+                        <span className="mx-2 text-slate-400">|</span>
+                        <span className="font-medium">Q:</span> {row.quality}
+                        <span className="mx-2 text-slate-400">|</span>
+                        <span className="font-medium">M:</span> {row.machine_no}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-800">
@@ -701,56 +693,56 @@ export default function BoxesPage() {
                         <span className="text-slate-400">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-800">
-                      <button
-                        type="button"
-                        disabled={loading || slipPrinting === row.stock_entry}
-                        onClick={() => void handlePrintSlip(row)}
-                        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {slipPrinting === row.stock_entry ? "…" : "Print slip"}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-slate-800">
-                      {challanByStockEntry[row.stock_entry] ? (
-                        <span className="text-xs text-slate-500">On challan</span>
-                      ) : editingEntry === row.stock_entry ? (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() => saveEdit(row)}
-                            className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white disabled:bg-slate-500"
-                          >
-                            {saving ? "Saving..." : "Save"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() => {
-                              setEditingEntry(null);
-                              setDraft(null);
-                            }}
-                            className="rounded bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-800"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
+                    <td className="sticky right-0 bg-white px-4 py-3 text-right text-slate-800">
+                      <div className="flex justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => startEdit(row)}
-                          className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                          disabled={loading || slipPrinting === row.stock_entry}
+                          onClick={() => void handlePrintSlip(row)}
+                          className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
                         >
-                          Edit
+                          {slipPrinting === row.stock_entry ? "…" : "Print slip"}
                         </button>
-                      )}
+                        {challanByStockEntry[row.stock_entry] ? (
+                          <span className="self-center text-xs text-slate-500">On challan</span>
+                        ) : editingEntry === row.stock_entry ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => saveEdit(row)}
+                              className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white disabled:bg-slate-500"
+                            >
+                              {saving ? "Saving..." : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => {
+                                setEditingEntry(null);
+                                setDraft(null);
+                              }}
+                              className="rounded bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-800"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEdit(row)}
+                            className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={10}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={9}>
                     No box records found.
                   </td>
                 </tr>

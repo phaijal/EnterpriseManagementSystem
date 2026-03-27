@@ -17,6 +17,9 @@ export type ChallanBoxLine = {
 export type ChallanPayload = {
   warehouse: string;
   boxes: ChallanBoxLine[];
+  lr_no?: string;
+  vehicle_no?: string;
+  transport?: string;
 };
 
 const MARKER = "CHALLAN_DATA:";

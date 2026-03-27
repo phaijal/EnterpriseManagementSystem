@@ -100,6 +100,9 @@ export default function ChallanPage() {
   const [warehouse, setWarehouse] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [companyGstin, setCompanyGstin] = useState("");
+  const [lrNo, setLrNo] = useState("");
+  const [vehicleNo, setVehicleNo] = useState("");
+  const [transport, setTransport] = useState("");
   const [boxOptions, setBoxOptions] = useState<BoxOption[]>([]);
   const [challanLockByStockEntry, setChallanLockByStockEntry] = useState<Record<string, string>>({});
   const [selectedBoxIds, setSelectedBoxIds] = useState<string[]>([]);
@@ -327,18 +330,35 @@ export default function ChallanPage() {
       const itemRows = selectedBoxes.map((box) => {
         const gl =
           box.grade && box.lot ? ` GRADE:${box.grade} LOT:${box.lot}` : "";
+        const lr = lrNo.trim();
+        const vehicle = vehicleNo.trim();
+        const transportName = transport.trim();
+        const metaSuffix =
+          (lr ? ` LR_NO:${lr}` : "") +
+          (vehicle ? ` VEHICLE_NO:${vehicle}` : "") +
+          (transportName ? ` TRANSPORT:${transportName}` : "");
         return {
           item_code: box.item_code,
           qty: box.net,
           warehouse,
           allow_zero_valuation_rate: 1,
-          description: `${box.box_label} — ${UI_DENIER} ${box.item_name} · ${UI_LOT_NO} ${box.item_code} — COPS:${box.cops} GROSS:${box.gross} TARE:${box.tare} NET:${box.net}${gl} STOCK_ENTRY:${box.stock_entry}`
+          description: `${box.box_label} — ${UI_DENIER} ${box.item_name} · ${UI_LOT_NO} ${box.item_code} — COPS:${box.cops} GROSS:${box.gross} TARE:${box.tare} NET:${box.net}${gl}${metaSuffix} STOCK_ENTRY:${box.stock_entry}`
         };
       });
 
-      const humanRemarks = `BOXES:${selectedBoxes.map((box) => box.box_label).join(", ")};TOTAL_NET:${totalNetWeight}`;
+      const lr = lrNo.trim();
+      const vehicle = vehicleNo.trim();
+      const transportName = transport.trim();
+      const humanRemarks =
+        (lr ? `LR_NO:${lr};` : "") +
+        (vehicle ? `VEHICLE_NO:${vehicle};` : "") +
+        (transportName ? `TRANSPORT:${transportName};` : "") +
+        `BOXES:${selectedBoxes.map((box) => box.box_label).join(", ")};TOTAL_NET:${totalNetWeight}`;
       const challanPayload = encodeChallanPayload({
         warehouse,
+        lr_no: lr || undefined,
+        vehicle_no: vehicle || undefined,
+        transport: transportName || undefined,
         boxes: selectedBoxes.map((box) => ({
           box_label: box.box_label,
           item_code: box.item_code,
@@ -531,6 +551,35 @@ export default function ChallanPage() {
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Action
               </h2>
+              <div className="mb-3 space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">L.R. No</label>
+                  <input
+                    value={lrNo}
+                    onChange={(e) => setLrNo(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-slate-300 focus:ring"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Vehicle No</label>
+                  <input
+                    value={vehicleNo}
+                    onChange={(e) => setVehicleNo(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-slate-300 focus:ring"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Transport</label>
+                  <input
+                    value={transport}
+                    onChange={(e) => setTransport(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none ring-slate-300 focus:ring"
+                    placeholder="Optional"
+                  />
+                </div>
+              </div>
               <button
                 type="submit"
                 disabled={

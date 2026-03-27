@@ -34,26 +34,44 @@ export function buildChallanHtmlDocument(opts: {
   posting_date?: string;
   company?: string;
   remarks?: string;
+  lr_no?: string;
+  vehicle_no?: string;
+  transport?: string;
   boxes: ChallanBoxLine[];
   companyParty?: PartyPrintDetails;
   customerParty?: PartyPrintDetails;
 }): string {
   const sums = sumBoxColumns(opts.boxes);
-  const rows = opts.boxes
-    .map(
-      (b) => `
-    <tr>
-      <td>${esc(b.box_label)}</td>
-      <td>${esc(b.item_code)}</td>
-      <td>${esc(b.item_name || "—")}</td>
-      <td>${esc(b.grade || "—")}</td>
-      <td class="num">${b.cops.toFixed(2)}</td>
-      <td class="num">${b.gross.toFixed(2)}</td>
-      <td class="num">${b.tare.toFixed(2)}</td>
-      <td class="num">${b.net.toFixed(2)}</td>
-    </tr>`
-    )
-    .join("");
+  const rows = opts.boxes.map((b, idx) => ({ ...b, srNo: idx + 1 }));
+  const leftRows = rows.filter((_, idx) => idx % 2 === 0);
+  const rightRows = rows.filter((_, idx) => idx % 2 === 1);
+  const maxRows = Math.max(leftRows.length, rightRows.length);
+
+  const bodyRows = Array.from({ length: maxRows }, (_, i) => {
+    const l = leftRows[i];
+    const r = rightRows[i];
+    const leftCells = l ?
+      `
+        <td class="num">${l.srNo}</td>
+        <td>${esc(l.box_label.replace(/^Box\s*/i, ""))}</td>
+        <td class="num">${l.cops.toFixed(0)}</td>
+        <td class="num">${l.gross.toFixed(3)}</td>
+        <td class="num">${l.tare.toFixed(3)}</td>
+        <td class="num">${l.net.toFixed(3)}</td>
+      `
+    : "<td></td><td></td><td></td><td></td><td></td><td></td>";
+    const rightCells = r ?
+      `
+        <td class="num">${r.srNo}</td>
+        <td>${esc(r.box_label.replace(/^Box\s*/i, ""))}</td>
+        <td class="num">${r.cops.toFixed(0)}</td>
+        <td class="num">${r.gross.toFixed(3)}</td>
+        <td class="num">${r.tare.toFixed(3)}</td>
+        <td class="num">${r.net.toFixed(3)}</td>
+      `
+    : "<td></td><td></td><td></td><td></td><td></td><td></td>";
+    return `<tr>${leftCells}${rightCells}</tr>`;
+  }).join("");
 
   const humanRemarks = opts.remarks
     ? opts.remarks.split("CHALLAN_DATA:")[0]?.trim() || opts.remarks
@@ -77,129 +95,74 @@ export function buildChallanHtmlDocument(opts: {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Challan ${esc(opts.name)}</title>
   <style>
-    :root {
-      --ink: #0f172a;
-      --muted: #475569;
-      --border: #94a3b8;
-      --rule: #cbd5e1;
-      --thead: #e2e8f0;
-      --page-bg: #fff;
-    }
     * { box-sizing: border-box; }
     body {
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: var(--ink);
-      background: var(--page-bg);
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
       max-width: 210mm;
       margin: 0 auto;
-      padding: 12mm 14mm 16mm;
-      font-size: 10.5pt;
-      line-height: 1.45;
+      padding: 8mm;
+      font-size: 11px;
+      line-height: 1.25;
+      background: #fff;
     }
-    .doc-title-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 1rem;
-      padding-bottom: 0.75rem;
-      border-bottom: 2px solid var(--ink);
-      margin-bottom: 1rem;
-    }
-    .doc-title {
-      margin: 0;
-      font-size: 1.35rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .doc-meta {
-      text-align: right;
-      font-size: 0.95rem;
-      color: var(--muted);
-    }
-    .doc-meta strong { color: var(--ink); font-weight: 600; }
-    .doc-meta .mono { font-family: ui-monospace, monospace; font-size: 0.9em; }
 
-    .parties {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem 1.5rem;
-      margin-bottom: 1.25rem;
+    .sheet {
+      border: 1px solid #222;
+      padding: 6px;
     }
-    @media (max-width: 640px) {
-      .parties { grid-template-columns: 1fr; }
-    }
-    .party-card {
-      border: 1px solid var(--rule);
-      border-radius: 4px;
-      padding: 0.65rem 0.75rem;
-      min-height: 7.5rem;
-      background: #fafafa;
-    }
-    .party-heading {
-      font-size: 0.65rem;
+
+    .top-title {
+      text-align: center;
       font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.35rem;
+      font-size: 18px;
+      letter-spacing: 0.5px;
+      margin: 2px 0 4px;
     }
-    .party-name {
-      font-weight: 700;
-      font-size: 1.02rem;
-      margin-bottom: 0.35rem;
-      color: var(--ink);
-    }
-    .party-address { font-size: 0.92rem; color: #334155; }
-    .addr-line + .addr-line { margin-top: 0.15rem; }
-    .gst-line {
-      margin-top: 0.5rem;
-      font-size: 0.88rem;
-      font-variant-numeric: tabular-nums;
-    }
-    .gst-line .label {
+
+    .subtitle {
+      text-align: center;
+      font-size: 12px;
       font-weight: 600;
-      color: var(--muted);
-      margin-right: 0.35rem;
+      margin: 0 0 6px;
     }
 
-    .context-strip {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem 1.25rem;
-      font-size: 0.88rem;
-      color: var(--muted);
-      padding: 0.5rem 0;
-      border-top: 1px solid var(--rule);
-      border-bottom: 1px solid var(--rule);
-      margin-bottom: 1rem;
-    }
-    .context-strip span strong { color: var(--ink); font-weight: 600; }
-
-    .section-title {
-      margin: 0 0 0.5rem;
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--muted);
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      border: 1px solid #222;
+      margin-bottom: 6px;
     }
 
+    .meta-left,
+    .meta-right {
+      padding: 4px 6px;
+      min-height: 108px;
+    }
+
+    .meta-left { border-right: 1px solid #222; }
+    .row { display: flex; gap: 6px; margin-bottom: 3px; }
+    .lbl { min-width: 72px; font-weight: 700; }
+    .val { flex: 1; word-break: break-word; }
+    .mono { font-family: "Courier New", monospace; }
+    .muted { color: #222; }
+
+    .table-wrap { border: 1px solid #222; }
     table.detail {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.9rem;
+      font-size: 11px;
     }
     table.detail th, table.detail td {
-      border: 1px solid var(--border);
-      padding: 0.45rem 0.55rem;
+      border: 1px solid #222;
+      padding: 3px 4px;
       text-align: left;
-      vertical-align: top;
+      vertical-align: middle;
     }
     table.detail th {
-      background: var(--thead);
-      font-weight: 600;
-      font-size: 0.82rem;
+      background: #f1f1f1;
+      font-weight: 700;
+      white-space: nowrap;
     }
     table.detail td.num, table.detail th.num {
       text-align: right;
@@ -207,96 +170,92 @@ export function buildChallanHtmlDocument(opts: {
     }
     table.detail tfoot td {
       font-weight: 700;
-      background: #f1f5f9;
+      background: #f9f9f9;
     }
 
     .remarks {
-      margin-top: 1.1rem;
-      font-size: 0.85rem;
-      color: var(--muted);
+      margin-top: 6px;
+      font-size: 10.5px;
       white-space: pre-wrap;
-      padding-top: 0.75rem;
-      border-top: 1px dashed var(--rule);
+      padding-top: 4px;
+      border-top: 1px dashed #666;
     }
 
     .footer-note {
-      margin-top: 1.5rem;
-      font-size: 0.72rem;
-      color: #94a3b8;
+      margin-top: 8px;
+      font-size: 9.5px;
+      color: #444;
       text-align: center;
     }
 
     @media print {
-      body { padding: 10mm 12mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .party-card { background: #fff; break-inside: avoid; }
-      table.detail { break-inside: auto; }
-      table.detail thead { display: table-header-group; }
-      table.detail tfoot { display: table-footer-group; }
-      table.detail tr { break-inside: avoid; break-after: auto; }
+      body { padding: 4mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @page { size: A4 portrait; margin: 4mm; }
     }
   </style>
 </head>
 <body>
-  <header class="doc-title-row">
-    <div>
-      <h1 class="doc-title">Delivery challan</h1>
+  <section class="sheet">
+    <p class="subtitle">Delivery Challan</p>
+    <p class="top-title">${esc(companyParty.name || opts.company || "—")}</p>
+
+    <section class="meta-grid" aria-label="Parties and challan meta">
+      <div class="meta-left">
+        <div class="row"><span class="lbl">GST NO :</span><span class="val mono">${esc(companyParty.gstin || "—")}</span></div>
+        <div class="row"><span class="lbl">Party Name :</span><span class="val">${esc(customerParty.name || opts.customer || "—")}</span></div>
+        <div class="row"><span class="lbl">Address :</span><span class="val">${esc((customerParty.addressLines || []).join(", ") || "—")}</span></div>
+        <div class="row"><span class="lbl">GST NO :</span><span class="val mono">${esc(customerParty.gstin || "—")}</span></div>
+      </div>
+      <div class="meta-right">
+        <div class="row"><span class="lbl">CHALLAN NO :</span><span class="val mono">${esc(opts.name)}</span></div>
+        <div class="row"><span class="lbl">CHALLAN DATE :</span><span class="val">${esc(opts.posting_date || "—")}</span></div>
+        <div class="row"><span class="lbl">L.R.NO :</span><span class="val">${esc(opts.lr_no || "—")}</span></div>
+        <div class="row"><span class="lbl">VEHICLE NO :</span><span class="val">${esc(opts.vehicle_no || "—")}</span></div>
+        <div class="row"><span class="lbl">TRANSPORT :</span><span class="val">${esc(opts.transport || "—")}</span></div>
+      </div>
+    </section>
+
+    <div class="table-wrap">
+      <table class="detail">
+        <thead>
+          <tr>
+            <th class="num">Sr.No</th>
+            <th>Box No</th>
+            <th class="num">Cops</th>
+            <th class="num">Gross wt.</th>
+            <th class="num">Tare Wt</th>
+            <th class="num">Net Wt</th>
+            <th class="num">Sr.No</th>
+            <th>Box No</th>
+            <th class="num">Cops</th>
+            <th class="num">Gross wt.</th>
+            <th class="num">Tare Wt</th>
+            <th class="num">Net Wt</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${bodyRows || `<tr><td colspan="12">No line detail stored on this challan.</td></tr>`}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">Grand total :</td>
+            <td class="num">${sums.cops.toFixed(0)}</td>
+            <td class="num">${sums.gross.toFixed(3)}</td>
+            <td class="num">${sums.tare.toFixed(3)}</td>
+            <td class="num">${sums.net.toFixed(3)}</td>
+            <td colspan="6"></td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
-    <div class="doc-meta">
-      <div><strong>No.</strong> <span class="mono">${esc(opts.name)}</span></div>
-      <div><strong>Date</strong> ${esc(opts.posting_date || "—")}</div>
-    </div>
-  </header>
 
-  <section class="parties" aria-label="Parties">
-    ${partyBlockHtml("From — company", companyParty, opts.company)}
-    ${partyBlockHtml("To — customer", customerParty, opts.customer)}
-  </section>
-
-  ${
-    opts.company && opts.company !== companyParty.name ?
-      `<div class="context-strip">
-    <span><strong>Company code</strong> ${esc(opts.company)}</span>
-  </div>`
-    : ""
-  }
-
-  <h2 class="section-title">Product &amp; box details</h2>
-  <table class="detail">
-    <thead>
-      <tr>
-        <th>Box</th>
-        <th>${esc(UI_LOT_NO)}</th>
-        <th>${esc(UI_DENIER)}</th>
-        <th>Grade</th>
-        <th class="num">Cops</th>
-        <th class="num">${esc(weightLabel("Gross"))}</th>
-        <th class="num">${esc(weightLabel("Tare"))}</th>
-        <th class="num">${esc(weightLabel("Net"))}</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rows || `<tr><td colspan="8">No line detail stored on this challan.</td></tr>`}
-    </tbody>
     ${
-      opts.boxes.length > 0 ?
-        `<tfoot>
-      <tr>
-        <td colspan="4">Totals</td>
-        <td class="num">${sums.cops.toFixed(2)}</td>
-        <td class="num">${sums.gross.toFixed(2)}</td>
-        <td class="num">${sums.tare.toFixed(2)}</td>
-        <td class="num">${sums.net.toFixed(2)}</td>
-      </tr>
-    </tfoot>`
+      humanRemarks ?
+        `<div class="remarks"><strong>Remarks:</strong> ${esc(humanRemarks)}</div>`
       : ""
     }
-  </table>
-  ${
-    humanRemarks ?
-      `<div class="remarks"><strong>Remarks</strong><br/>${esc(humanRemarks)}</div>`
-    : ""
-  }
-  <p class="footer-note">This document was generated for printing or PDF export. Retain for your records.</p>
+    <p class="footer-note">This document was generated for printing. Retain for your records.</p>
+  </section>
 </body>
 </html>`;
 }

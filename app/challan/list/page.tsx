@@ -4,10 +4,55 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TablePagination } from "@/components/TablePagination";
 import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
-import { resolveChallanBoxLines, type ChallanBoxLine } from "@/lib/challanPayload";
+import { decodeChallanPayload, resolveChallanBoxLines, type ChallanBoxLine } from "@/lib/challanPayload";
 import { buildChallanHtmlDocument } from "@/lib/challanDownloadHtml";
 import { fetchCompanyPrintDetails, fetchCustomerPrintDetails } from "@/lib/challanPrintParties";
-import { printBoxSlipsHtml } from "@/lib/boxSlipPrint";
+
+function printHtmlDocument(html: string): void {
+  // Hidden iframe print on current tab/page (no popup / new tab).
+  const iframe = document.createElement("iframe");
+  iframe.title = "Challan print";
+  iframe.setAttribute("aria-hidden", "true");
+  Object.assign(iframe.style, {
+    position: "fixed",
+    left: "-9999px",
+    top: "0",
+    width: "8.5in",
+    height: "11in",
+    border: "0",
+    margin: "0"
+  });
+
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    iframe.remove();
+  };
+
+  const runPrint = () => {
+    const win = iframe.contentWindow;
+    if (!win) {
+      cleanup();
+      return;
+    }
+    win.addEventListener("afterprint", cleanup, { once: true });
+    window.setTimeout(cleanup, 90_000);
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      cleanup();
+    }
+  };
+
+  iframe.addEventListener("load", () => {
+    window.setTimeout(runPrint, 100);
+  });
+
+  document.body.appendChild(iframe);
+  iframe.srcdoc = html;
+}
 
 type DeliveryNoteRow = {
   name: string;
@@ -46,6 +91,29 @@ type ItemNameResponse = {
     item_name?: string;
   }>;
 };
+
+function extractMetaFromItemDescriptions(
+  items: Array<{ description?: string; item_description?: string }> | undefined
+): { lr_no: string; vehicle_no: string; transport: string } {
+  const lines = (items ?? [])
+    .map((it) => it.description || it.item_description || "")
+    .filter(Boolean);
+  const read = (patterns: RegExp[]): string => {
+    for (const text of lines) {
+      for (const re of patterns) {
+        const m = text.match(re);
+        const v = m?.[1]?.trim();
+        if (v) return v;
+      }
+    }
+    return "";
+  };
+  return {
+    lr_no: read([/LR_NO:\s*([^\s;]+)/i, /L\.?R\.?\s*NO:\s*([^\s;]+)/i]),
+    vehicle_no: read([/VEHICLE_NO:\s*([^\s;]+)/i, /VEHICLE\s*NO:\s*([^\s;]+)/i]),
+    transport: read([/TRANSPORT:\s*([^;]+?)(?:\s+STOCK_ENTRY:|$)/i])
+  };
+}
 
 async function enrichBoxLinesWithItemNames(boxes: ChallanBoxLine[]): Promise<ChallanBoxLine[]> {
   const codes = [...new Set(boxes.map((b) => b.item_code).filter((c) => c && c !== "—"))];
@@ -105,6 +173,38 @@ export default function ChallanListPage() {
     refresh();
   }, [refresh]);
 
+  const extractMetaFromRemarks = (
+    remarks: string | undefined,
+    decoded: { lr_no?: string; vehicle_no?: string; transport?: string } | null
+  ) => {
+    const pickByPatterns = (patterns: RegExp[]): string => {
+      if (!remarks) return "";
+      for (const re of patterns) {
+        const m = remarks.match(re);
+        const v = m?.[1]?.trim();
+        if (v) return v;
+      }
+      return "";
+    };
+    return {
+      lr_no:
+        (decoded?.lr_no || "").trim() ||
+        pickByPatterns([
+          /(?:^|;)\s*LR_NO\s*:\s*([^;]+)/i,
+          /(?:^|;)\s*L\.?R\.?\s*NO\s*:\s*([^;]+)/i
+        ]),
+      vehicle_no:
+        (decoded?.vehicle_no || "").trim() ||
+        pickByPatterns([
+          /(?:^|;)\s*VEHICLE_NO\s*:\s*([^;]+)/i,
+          /(?:^|;)\s*VEHICLE\s*NO\s*:\s*([^;]+)/i
+        ]),
+      transport:
+        (decoded?.transport || "").trim() ||
+        pickByPatterns([/(?:^|;)\s*TRANSPORT\s*:\s*([^;]+)/i])
+    };
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -143,6 +243,9 @@ export default function ChallanListPage() {
 
       let boxes = resolveChallanBoxLines(doc.remarks, doc.items ?? []);
       boxes = await enrichBoxLinesWithItemNames(boxes);
+      const decoded = decodeChallanPayload(doc.remarks);
+      const meta = extractMetaFromRemarks(doc.remarks, decoded);
+      const lineMeta = extractMetaFromItemDescriptions(doc.items);
 
       const companyId = (doc.company || "").trim();
       const customerId = (doc.customer || "").trim();
@@ -157,12 +260,15 @@ export default function ChallanListPage() {
         posting_date: doc.posting_date,
         company: doc.company,
         remarks: doc.remarks,
+        lr_no: meta.lr_no || lineMeta.lr_no || undefined,
+        vehicle_no: meta.vehicle_no || lineMeta.vehicle_no || undefined,
+        transport: meta.transport || lineMeta.transport || undefined,
         boxes,
         companyParty,
         customerParty
       });
 
-      printBoxSlipsHtml(html);
+      printHtmlDocument(html);
     } catch (error) {
       alert(getApiErrorMessage(error, "Failed to print challan."));
     } finally {
