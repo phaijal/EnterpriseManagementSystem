@@ -1,0 +1,41 @@
+name: Build EMS Launcher EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "windows/EMSLauncher.ps1"
+      - "windows/Build-EMSLauncher-Exe.ps1"
+      - ".github/workflows/build-launcher-exe.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-commit:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+      - name: Build EXE
+      shell: pwsh
+      run: |
+        powershell -ExecutionPolicy Bypass -File .\windows\Build-EMSLauncher-Exe.ps1
+
+      - name: Commit EXE if changed
+      shell: pwsh
+      run: |
+        git add EMSLauncher.exe
+        if (git diff --cached --quiet) {
+          Write-Host "No EXE changes to commit."
+          exit 0
+        }
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -m "chore: update EMSLauncher.exe"
+        git push

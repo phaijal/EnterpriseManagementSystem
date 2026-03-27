@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-const ERP_BASE_URL = "http://localhost:8080";
+const ERP_BASE_URL = process.env.ERP_BASE_URL || "http://localhost:8080";
 
 function getCookieValue(cookieHeader: string, key: string) {
   const parts = cookieHeader.split(";").map((part) => part.trim());

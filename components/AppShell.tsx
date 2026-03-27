@@ -71,6 +71,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, loading: authLoading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [backendReachable, setBackendReachable] = useState(true);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -84,6 +85,30 @@ function AppShellInner({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkBackend = async () => {
+      try {
+        const response = await fetch("/api/erpnext/api/method/ping", {
+          method: "GET",
+          cache: "no-store"
+        });
+        if (!cancelled) setBackendReachable(response.ok);
+      } catch {
+        if (!cancelled) setBackendReachable(false);
+      }
+    };
+
+    void checkBackend();
+    const id = window.setInterval(() => void checkBackend(), 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-100/80 lg:flex-row">
@@ -199,6 +224,11 @@ function AppShellInner({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {!backendReachable ? (
+          <div className="border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:px-6 lg:px-8">
+            ERPNext backend is not reachable. Please run <strong>EMSLauncher.exe</strong>, then refresh.
+          </div>
+        ) : null}
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
           <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>

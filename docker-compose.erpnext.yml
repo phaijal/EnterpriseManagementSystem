@@ -222,6 +222,21 @@ services:
       - erpnext-logs:/home/frappe/frappe-bench/logs
     restart: unless-stopped
 
+  ui:
+    build:
+      context: .
+      dockerfile: docker/ui.Dockerfile
+    networks:
+      - erpnext
+    depends_on:
+      - frontend
+    environment:
+      ERP_BASE_URL: http://frontend:8080
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
 volumes:
   erpnext-db-data:
   erpnext-redis-queue:
