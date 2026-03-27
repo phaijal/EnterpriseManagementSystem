@@ -3,9 +3,23 @@
 import { FormEvent, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
 
+async function setValueQuiet(doctype: string, name: string, fieldname: string, value: string) {
+  try {
+    await api.post("/api/method/frappe.client.set_value", {
+      doctype,
+      name,
+      fieldname,
+      value
+    });
+  } catch {
+    /* Field may not exist on this site */
+  }
+}
+
 export default function AddCustomerPage() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
   const [gstNo, setGstNo] = useState("");
   const [pincode, setPincode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,15 +39,16 @@ export default function AddCustomerPage() {
       });
 
       const customerName = customerRes.data?.data?.name ?? name;
+      const gstVal = gstNo.trim();
 
       const addressRes = await api.post("/api/resource/Address", {
         address_title: name,
         address_type: "Billing",
         address_line1: address,
-        city: "NA",
+        city: city.trim() || undefined,
         country: "India",
         pincode,
-        gstin: gstNo,
+        gstin: gstVal || undefined,
         links: [
           {
             link_doctype: "Customer",
@@ -50,11 +65,16 @@ export default function AddCustomerPage() {
           fieldname: "customer_primary_address",
           value: addressName
         });
+        await setValueQuiet("Address", addressName, "gstin", gstVal);
+        await setValueQuiet("Address", addressName, "tax_id", gstVal);
       }
+      await setValueQuiet("Customer", customerName, "gstin", gstVal);
+      await setValueQuiet("Customer", customerName, "tax_id", gstVal);
 
       setSuccessMessage(`Customer created successfully: ${customerName}`);
       setName("");
       setAddress("");
+      setCity("");
       setGstNo("");
       setPincode("");
     } catch (error) {
@@ -100,6 +120,15 @@ export default function AddCustomerPage() {
           <input
             value={gstNo}
             onChange={(e) => setGstNo(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">City</label>
+          <input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
           />
         </div>

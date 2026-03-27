@@ -37,11 +37,13 @@ type CustomerRow = {
   address: string;
   gst: string;
   pincode: string;
+  primaryAddressName: string;
 };
 
 export default function CustomersPage() {
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingCustomer, setDeletingCustomer] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const { pageItems, page, setPage, totalPages, from, to, total } = useClientPagination(
@@ -119,7 +121,8 @@ export default function CustomersPage() {
             customer: customer.customer_name || customer.name || "-",
             address: [addr?.address_line1, addr?.city].filter(Boolean).join(", ") || "-",
             gst,
-            pincode: addr?.pincode || "-"
+            pincode: addr?.pincode || "-",
+            primaryAddressName: addrName
           };
         });
 
@@ -133,6 +136,33 @@ export default function CustomersPage() {
 
     loadCustomers();
   }, [reloadToken]);
+
+  const deleteCustomer = async (row: CustomerRow) => {
+    const confirmed = window.confirm(
+      `Delete customer "${row.customer}"? This will remove the customer record.`
+    );
+    if (!confirmed) return;
+
+    setDeletingCustomer(row.erpName);
+    try {
+      await api.delete(`/api/resource/Customer/${encodeURIComponent(row.erpName)}`);
+
+      if (row.primaryAddressName) {
+        try {
+          await api.delete(`/api/resource/Address/${encodeURIComponent(row.primaryAddressName)}`);
+        } catch {
+          /* Address may be shared/linked elsewhere; customer deletion is the primary action. */
+        }
+      }
+
+      setRows((prev) => prev.filter((r) => r.erpName !== row.erpName));
+      setReloadToken((n) => n + 1);
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to delete customer."));
+    } finally {
+      setDeletingCustomer(null);
+    }
+  };
 
   return (
     <section className="mx-auto w-full max-w-5xl rounded-xl bg-white p-6 shadow-sm">
@@ -171,12 +201,22 @@ export default function CustomersPage() {
                     <td className="px-4 py-3 text-slate-800">{row.gst}</td>
                     <td className="px-4 py-3 text-slate-800">{row.pincode}</td>
                     <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/customers/edit?name=${encodeURIComponent(row.erpName)}`}
-                        className="text-sm font-semibold text-slate-900 underline"
-                      >
-                        Edit
-                      </Link>
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          href={`/customers/edit?name=${encodeURIComponent(row.erpName)}`}
+                          className="text-sm font-semibold text-slate-900 underline"
+                        >
+                          Edit
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void deleteCustomer(row)}
+                          disabled={deletingCustomer === row.erpName}
+                          className="text-sm font-semibold text-red-700 underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {deletingCustomer === row.erpName ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

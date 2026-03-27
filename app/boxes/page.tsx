@@ -107,6 +107,7 @@ export default function BoxesPage() {
   /** Stock Entry name → submitted Delivery Note name */
   const [challanByStockEntry, setChallanByStockEntry] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState("");
+  const [challanFilter, setChallanFilter] = useState<"available" | "all" | "on_challan">("available");
   const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
@@ -359,7 +360,7 @@ export default function BoxesPage() {
       cops: typeof row.cops === "number" ? row.cops : 0,
       tare_weight: typeof row.tare_weight === "number" ? row.tare_weight : 0,
       gross_weight: typeof row.gross_weight === "number" ? row.gross_weight : 0,
-      grade: row.grade !== "—" ? row.grade : "1st"
+      grade: row.grade !== "—" ? row.grade : "1ST"
     });
   };
 
@@ -470,8 +471,12 @@ export default function BoxesPage() {
 
   const filteredRows = useMemo(() => {
     const term = filter.trim().toLowerCase();
-    if (!term) return rows;
     return rows.filter((row) => {
+      const onChallan = Boolean(challanByStockEntry[row.stock_entry]);
+      if (challanFilter === "available" && onChallan) return false;
+      if (challanFilter === "on_challan" && !onChallan) return false;
+
+      if (!term) return true;
       const blob = [
         row.item_code,
         row.item_name,
@@ -484,12 +489,12 @@ export default function BoxesPage() {
         .toLowerCase();
       return blob.includes(term);
     });
-  }, [rows, filter]);
+  }, [rows, filter, challanByStockEntry, challanFilter]);
 
   const { pageItems, page, setPage, totalPages, from, to, total } = useClientPagination(
     filteredRows,
     pageSize,
-    filter
+    `${filter}|${challanFilter}`
   );
 
   return (
@@ -504,6 +509,42 @@ export default function BoxesPage() {
       </p>
 
       <div className="mb-4">
+        <p className="mb-2 block text-sm font-medium text-slate-700">Box visibility</p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setChallanFilter("available")}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${
+              challanFilter === "available" ?
+                "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+            }`}
+          >
+            Available only
+          </button>
+          <button
+            type="button"
+            onClick={() => setChallanFilter("all")}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${
+              challanFilter === "all" ?
+                "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setChallanFilter("on_challan")}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${
+              challanFilter === "on_challan" ?
+                "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+            }`}
+          >
+            On challan
+          </button>
+        </div>
         <label className="mb-1 block text-sm font-medium text-slate-700">
           Filter by {UI_LOT_NO} or {UI_DENIER}
         </label>
@@ -518,18 +559,13 @@ export default function BoxesPage() {
       {loading ? (
         <p className="text-slate-600">Loading boxes...</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-left">
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="min-w-[1200px] w-full text-left">
             <thead className="bg-slate-100 text-sm font-semibold text-slate-700">
               <tr>
                 <th className="px-4 py-3">Box</th>
                 <th className="px-4 py-3">{UI_LOT_NO}</th>
-                <th className="px-4 py-3">{UI_DENIER}</th>
-                <th className="px-4 py-3">Grade</th>
-                <th className="px-4 py-3">Twist</th>
-                <th className="px-4 py-3">Shade</th>
-                <th className="px-4 py-3">Quality</th>
-                <th className="px-4 py-3">Mach.</th>
+                <th className="px-4 py-3">Details</th>
                 <th className="px-4 py-3">Cops</th>
                 <th className="px-4 py-3">{weightLabel("Tare weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Gross weight")}</th>
@@ -559,37 +595,44 @@ export default function BoxesPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-800">{row.item_code}</td>
-                    <td className="px-4 py-3 text-slate-800">{row.item_name}</td>
                     <td className="px-4 py-3 text-slate-800">
-                      {editingEntry === row.stock_entry && draft ? (
-                        <select
-                          value={draft.grade}
-                          onChange={(e) =>
-                            setDraft((prev) => (prev ? { ...prev, grade: e.target.value } : prev))
-                          }
-                          className="w-full min-w-[4rem] rounded border px-1 py-1 text-sm"
-                        >
-                          {GRADE_OPTIONS.map((g) => (
-                            <option key={g} value={g}>
-                              {g}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        row.grade
-                      )}
-                    </td>
-                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.twist}>
-                      {row.twist}
-                    </td>
-                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.shade}>
-                      {row.shade}
-                    </td>
-                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.quality}>
-                      {row.quality}
-                    </td>
-                    <td className="max-w-[5rem] truncate px-4 py-3 text-slate-800" title={row.machine_no}>
-                      {row.machine_no}
+                      <div className="space-y-1 text-xs leading-5">
+                        <p className="truncate" title={row.item_name}>
+                          <span className="font-medium">{UI_DENIER}:</span> {row.item_name}
+                        </p>
+                        <p className="truncate" title={row.twist}>
+                          <span className="font-medium">Twist:</span> {row.twist}
+                        </p>
+                        <p className="truncate" title={row.shade}>
+                          <span className="font-medium">Shade:</span> {row.shade}
+                        </p>
+                        <p className="truncate" title={row.quality}>
+                          <span className="font-medium">Quality:</span> {row.quality}
+                        </p>
+                        <p className="truncate" title={row.machine_no}>
+                          <span className="font-medium">Mach.:</span> {row.machine_no}
+                        </p>
+                        <div className="pt-0.5">
+                          <span className="mr-2 font-medium">Grade:</span>
+                          {editingEntry === row.stock_entry && draft ? (
+                            <select
+                              value={draft.grade}
+                              onChange={(e) =>
+                                setDraft((prev) => (prev ? { ...prev, grade: e.target.value } : prev))
+                              }
+                              className="min-w-[5rem] rounded border px-1 py-0.5 text-xs"
+                            >
+                              {GRADE_OPTIONS.map((g) => (
+                                <option key={g} value={g}>
+                                  {g}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span>{row.grade}</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-800">
                       {editingEntry === row.stock_entry && draft ? (
@@ -707,7 +750,7 @@ export default function BoxesPage() {
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={12}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={10}>
                     No box records found.
                   </td>
                 </tr>

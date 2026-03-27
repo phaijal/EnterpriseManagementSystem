@@ -18,6 +18,12 @@ type UomResponse = {
 };
 
 const FIXED_ITEM_GROUP = "Products";
+const EMPTY_LOT_ATTRS: LotAttrs = {
+  twist: "",
+  shade: "",
+  quality: "",
+  machineNo: ""
+};
 
 function pickDefaultStockUom(uoms: string[]): string {
   const preferred = ["Kg", "Kgs", "kg", "kgs", "KG"];
@@ -46,12 +52,7 @@ export default function AddItemPage() {
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
-  const [lotAttrs, setLotAttrs] = useState<LotAttrs>({
-    twist: "",
-    shade: "",
-    quality: "",
-    machineNo: ""
-  });
+  const [lotAttrs, setLotAttrs] = useState<LotAttrs>({ ...EMPTY_LOT_ATTRS });
 
   useEffect(() => {
     const fetchFormMeta = async () => {
@@ -107,7 +108,7 @@ export default function AddItemPage() {
       setSuccessMessage(`Saved: ${UI_LOT_NO} ${createdName}`);
       setItemCode("");
       setItemName("");
-      setLotAttrs({ twist: "", shade: "", quality: "", machineNo: "" });
+      setLotAttrs({ ...EMPTY_LOT_ATTRS });
     } catch (error) {
       alert(
         getApiErrorMessage(

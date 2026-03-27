@@ -90,7 +90,7 @@ export default function AddStockPage() {
   const [draftCops, setDraftCops] = useState<number>(1);
   const [draftBoxWeight, setDraftBoxWeight] = useState<number>(0);
   const [draftGross, setDraftGross] = useState<number>(0);
-  const [draftGrade, setDraftGrade] = useState<GradeValue>("1st");
+  const [draftGrade, setDraftGrade] = useState<GradeValue>("1ST");
   const [lotAttrs, setLotAttrs] = useState<LotAttrs>({ ...EMPTY_LOT_ATTRS });
   const [loadingItemAttrs, setLoadingItemAttrs] = useState(false);
 

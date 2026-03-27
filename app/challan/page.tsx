@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { pickGstinFromCompanyRecord } from "@/lib/companyDoc";
 import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
 import { encodeChallanPayload } from "@/lib/challanPayload";
 import { WEIGHT_UNIT_LABEL } from "@/lib/units";
@@ -162,8 +163,10 @@ export default function ChallanPage() {
         const companyNameValue = company?.name || "";
         setCompanyName(companyNameValue);
         if (companyNameValue) {
-          const companyDoc = await api.get(`/api/resource/Company/${encodeURIComponent(companyNameValue)}`);
-          setCompanyGstin(companyDoc.data?.data?.gstin || "");
+          const companyDoc = await api.get<{ data?: Record<string, unknown> }>(
+            `/api/resource/Company/${encodeURIComponent(companyNameValue)}`
+          );
+          setCompanyGstin(pickGstinFromCompanyRecord(companyDoc.data?.data) || "");
         } else {
           setCompanyGstin("");
         }
@@ -373,6 +376,16 @@ export default function ChallanPage() {
         throw submitError;
       }
       setSuccessMessage("Delivery Note created and submitted.");
+      setChallanLockByStockEntry((prev) => {
+        const next = { ...prev };
+        for (const box of selectedBoxes) {
+          next[box.stock_entry] = dnName;
+        }
+        return next;
+      });
+      setBoxOptions((prev) =>
+        prev.filter((box) => !selectedBoxes.some((selected) => selected.stock_entry === box.stock_entry))
+      );
       setSelectedBoxIds([]);
     } catch (error) {
       alert(

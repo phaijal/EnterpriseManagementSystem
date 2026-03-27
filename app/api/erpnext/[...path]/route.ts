@@ -30,7 +30,9 @@ async function fetchCsrfFromDesk(cookieHeader: string) {
   }
 }
 
-async function proxyRequest(request: NextRequest, method: "GET" | "POST") {
+type ProxyMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+async function proxyRequest(request: NextRequest, method: ProxyMethod) {
   const rawPath = request.nextUrl.pathname.replace("/api/erpnext", "");
   const query = request.nextUrl.search ?? "";
   const targetUrl = `${ERP_BASE_URL}${rawPath}${query}`;
@@ -50,7 +52,7 @@ async function proxyRequest(request: NextRequest, method: "GET" | "POST") {
     headers.set("Cookie", cookie);
 
     // ERPNext expects this header for unsafe requests (POST/PUT/DELETE).
-    if (method === "POST") {
+    if (method !== "GET") {
       const csrfFromCookie = getCookieValue(cookie, "csrf_token");
       const csrfFromDesk = csrfFromCookie || (await fetchCsrfFromDesk(cookie));
       if (csrfFromDesk) headers.set("X-Frappe-CSRF-Token", csrfFromDesk);
@@ -65,7 +67,7 @@ async function proxyRequest(request: NextRequest, method: "GET" | "POST") {
   const upstream = await fetch(targetUrl, {
     method,
     headers,
-    body: method === "POST" ? await request.text() : undefined,
+    body: method === "GET" ? undefined : await request.text(),
     cache: "no-store"
   });
 
@@ -93,4 +95,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   return proxyRequest(request, "POST");
+}
+
+export async function PUT(request: NextRequest) {
+  return proxyRequest(request, "PUT");
+}
+
+export async function PATCH(request: NextRequest) {
+  return proxyRequest(request, "PATCH");
+}
+
+export async function DELETE(request: NextRequest) {
+  return proxyRequest(request, "DELETE");
 }

@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TablePagination } from "@/components/TablePagination";
 import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
+import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
 import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
 import { UI_DENIER, UI_LOT_NO } from "@/lib/uiLabels";
 import { weightLabel } from "@/lib/units";
@@ -87,21 +89,6 @@ export default function StockPage() {
           return;
         }
 
-        const response = await api.get<StockResponse>("/api/resource/Bin", {
-          params: {
-            fields: JSON.stringify(["item_code", "actual_qty"]),
-            filters: JSON.stringify([
-              ["warehouse", "=", selectedWarehouse],
-              ["actual_qty", ">", 0]
-            ]),
-            order_by: "item_code asc",
-            limit_page_length: 200
-          }
-        });
-
-        const rows = response.data.data ?? [];
-        const itemCodes = Array.from(new Set(rows.map((row) => row.item_code).filter(Boolean)));
-
         const stockEntriesResponse = await api.get<StockEntryListResponse>(
           "/api/resource/Stock Entry",
           {
@@ -117,14 +104,17 @@ export default function StockPage() {
           }
         );
         const entries = stockEntriesResponse.data.data ?? [];
+        const lockMap = await fetchSubmittedChallanLockMap(api);
+        const unlockedEntries = entries.filter((entry) => !lockMap.has(entry.name));
+
         const entryDetails = await Promise.all(
-          entries.map((entry) =>
+          unlockedEntries.map((entry) =>
             api.get<StockEntryDetailResponse>(`/api/resource/Stock Entry/${entry.name}`)
           )
         );
 
-        const extrasByItem: Record<string, { cops: number; tare: number; gross: number }> = {};
-        entries.forEach((entry, index) => {
+        const extrasByItem: Record<string, { cops: number; tare: number; gross: number; net: number }> = {};
+        unlockedEntries.forEach((entry, index) => {
           const firstItem = entryDetails[index].data.data?.items?.[0];
           const itemCode = firstItem?.item_code;
           const itemWarehouse = firstItem?.t_warehouse || firstItem?.s_warehouse || "";
@@ -134,14 +124,17 @@ export default function StockPage() {
           const cops = firstItem?.custom_cops ?? parsed.cops;
           const tare = firstItem?.custom_tare_weight ?? parsed.tare;
           const gross = firstItem?.custom_gross_weight ?? parsed.gross;
+          const net = typeof firstItem?.qty === "number" ? firstItem.qty : 0;
           if (!extrasByItem[itemCode]) {
-            extrasByItem[itemCode] = { cops: 0, tare: 0, gross: 0 };
+            extrasByItem[itemCode] = { cops: 0, tare: 0, gross: 0, net: 0 };
           }
           extrasByItem[itemCode].cops += cops;
           extrasByItem[itemCode].tare += tare;
           extrasByItem[itemCode].gross += gross;
+          extrasByItem[itemCode].net += net;
         });
 
+        const itemCodes = Object.keys(extrasByItem);
         const itemNameMap: Record<string, string> = {};
         if (itemCodes.length > 0) {
           const itemsResponse = await api.get<ItemNameResponse>("/api/resource/Item", {
@@ -157,18 +150,17 @@ export default function StockPage() {
           }
         }
 
-        const mappedRows: ViewRow[] = rows.map((row) => {
-          const itemCode = row.item_code;
-          const extras = extrasByItem[itemCode] || { cops: 0, tare: 0, gross: 0 };
+        const mappedRows: ViewRow[] = itemCodes.map((itemCode) => {
+          const extras = extrasByItem[itemCode] || { cops: 0, tare: 0, gross: 0, net: 0 };
           return {
             item_code: itemCode,
             item_name: itemNameMap[itemCode] || itemCode,
             cops: extras.cops.toFixed(2),
             tare_weight: extras.tare.toFixed(2),
             gross_weight: extras.gross.toFixed(2),
-            net_weight: row.actual_qty
+            net_weight: extras.net
           };
-        });
+        }).sort((a, b) => a.item_code.localeCompare(b.item_code));
         setStock(mappedRows);
       } catch (error) {
         alert(
@@ -187,7 +179,15 @@ export default function StockPage() {
 
   return (
     <section className="mx-auto w-full max-w-3xl rounded-xl bg-white p-6 shadow-sm">
-      <h1 className="mb-6 text-2xl font-bold text-slate-900">Current Stock</h1>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-slate-900">Current Stock</h1>
+        <Link
+          href="/add-stock"
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+        >
+          Add stock
+        </Link>
+      </div>
       <p className="mb-4 rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-700">
         Finished goods warehouse:{" "}
         <span className="font-semibold">{warehouse || "Not found"}</span>

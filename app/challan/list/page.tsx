@@ -5,8 +5,9 @@ import { TablePagination } from "@/components/TablePagination";
 import { useClientPagination } from "@/hooks/useClientPagination";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { resolveChallanBoxLines, type ChallanBoxLine } from "@/lib/challanPayload";
-import { buildChallanHtmlDocument, triggerHtmlDownload } from "@/lib/challanDownloadHtml";
+import { buildChallanHtmlDocument } from "@/lib/challanDownloadHtml";
 import { fetchCompanyPrintDetails, fetchCustomerPrintDetails } from "@/lib/challanPrintParties";
+import { printBoxSlipsHtml } from "@/lib/boxSlipPrint";
 
 type DeliveryNoteRow = {
   name: string;
@@ -79,7 +80,7 @@ export default function ChallanListPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionName, setActionName] = useState<string | null>(null);
-  const [downloadingName, setDownloadingName] = useState<string | null>(null);
+  const [printingName, setPrintingName] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(25);
 
   const refresh = useCallback(async () => {
@@ -128,8 +129,8 @@ export default function ChallanListPage() {
     return "—";
   };
 
-  const handleDownload = async (name: string) => {
-    setDownloadingName(name);
+  const handlePrint = async (name: string) => {
+    setPrintingName(name);
     try {
       const response = await api.get<DeliveryNoteDetail>(
         `/api/resource/Delivery Note/${encodeURIComponent(name)}`
@@ -161,12 +162,11 @@ export default function ChallanListPage() {
         customerParty
       });
 
-      const safeFile = name.replace(/[^\w.-]+/g, "_");
-      triggerHtmlDownload(`Challan-${safeFile}.html`, html);
+      printBoxSlipsHtml(html);
     } catch (error) {
-      alert(getApiErrorMessage(error, "Failed to download challan."));
+      alert(getApiErrorMessage(error, "Failed to print challan."));
     } finally {
-      setDownloadingName(null);
+      setPrintingName(null);
     }
   };
 
@@ -242,7 +242,7 @@ export default function ChallanListPage() {
     return ds === 0 || ds === 1 || ds === 2;
   };
 
-  const busy = actionName !== null || downloadingName !== null;
+  const busy = actionName !== null || printingName !== null;
 
   return (
     <section className="mx-auto w-full max-w-5xl rounded-xl bg-white p-6 shadow-sm">
@@ -250,8 +250,8 @@ export default function ChallanListPage() {
         <h1 className="text-2xl font-bold text-slate-900">All Challans</h1>
         <p className="text-sm text-slate-600">
           Delivery Notes listed newest first ({rows.length} loaded; use pagination below for long lists).
-          Download opens an HTML file (open in browser or print to PDF). New challans include full per-box
-          weights; older ones may show net only.
+          Print opens the browser print dialog. New challans include full per-box weights; older ones may
+          show net only.
         </p>
       </div>
 
@@ -279,7 +279,7 @@ export default function ChallanListPage() {
                 <th className="px-4 py-3">Posting date</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Doc</th>
-                <th className="px-4 py-3 text-right">Download</th>
+                <th className="px-4 py-3 text-right">Print</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -296,10 +296,10 @@ export default function ChallanListPage() {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => handleDownload(row.name)}
+                        onClick={() => handlePrint(row.name)}
                         className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {downloadingName === row.name ? "…" : "HTML"}
+                        {printingName === row.name ? "…" : "Print"}
                       </button>
                     </td>
                     <td className="px-4 py-3 text-right">

@@ -1,5 +1,5 @@
 /** Allowed grade values for material receipt boxes. */
-export const GRADE_OPTIONS = ["1st", "ISTA", "PQ", "CLQ"] as const;
+export const GRADE_OPTIONS = ["1ST", "ISTA", "PQ", "CLQ"] as const;
 export type GradeValue = (typeof GRADE_OPTIONS)[number];
 
 export function isGradeValue(s: string): s is GradeValue {

@@ -11,6 +11,30 @@ import { ensureWarehouseTypesForCompanyCreate } from "@/lib/finishedGoodsWarehou
 type AddressDoc = { name?: string };
 const ERP_DESK_BASE_URL = process.env.NEXT_PUBLIC_ERP_DESK_URL?.trim() || "http://localhost:8080";
 const REQUIRED_ITEM_GROUP = "Products";
+const INPUT_CLASS = "w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring";
+const CHECKING_LABEL = "Checking...";
+
+type ReadinessRowProps = {
+  label: string;
+  status: "OK" | "Missing" | "Unknown";
+};
+
+function ReadinessRow({ label, status }: ReadinessRowProps) {
+  return (
+    <li>
+      {status} - {label}
+    </li>
+  );
+}
+
+function parseSetupComplete(raw: unknown): boolean {
+  return (
+    raw === 1 ||
+    raw === "1" ||
+    raw === true ||
+    (typeof raw === "string" && raw.toLowerCase() === "yes")
+  );
+}
 
 async function setCompanyFieldQuiet(companyName: string, fieldname: string, value: string) {
   try {
@@ -58,6 +82,19 @@ function pickDefaultCurrency(names: string[]): string {
   const inr = names.find((n) => n === "INR");
   if (inr) return inr;
   return names[0] ?? "";
+}
+
+function parseItemGroupStatus(groups: Array<{ name?: string; is_group?: unknown }>) {
+  const hasItemGroupParent = groups.some((row) => {
+    const g = row.is_group;
+    return g === 1 || g === true || g === "1" || Number(g) === 1;
+  });
+  const hasLeafItemGroup = groups.some((row) => {
+    const g = row.is_group;
+    return g === 0 || g === false || g === "0" || Number(g) === 0;
+  });
+  const hasRequiredItemGroup = groups.some((row) => (row.name ?? "").trim() === REQUIRED_ITEM_GROUP);
+  return { hasItemGroupParent, hasLeafItemGroup, hasRequiredItemGroup };
 }
 
 export default function AddCompanyPage() {
@@ -193,18 +230,10 @@ export default function AddCompanyPage() {
           }
         );
         const groups = groupRes.data?.data ?? [];
-        const hasParent = groups.some((row) => {
-          const g = row.is_group;
-          return g === 1 || g === true || g === "1" || Number(g) === 1;
-        });
-        const hasLeaf = groups.some((row) => {
-          const g = row.is_group;
-          return g === 0 || g === false || g === "0" || Number(g) === 0;
-        });
-        const hasRequired = groups.some((row) => (row.name ?? "").trim() === REQUIRED_ITEM_GROUP);
-        setHasItemGroupParent(hasParent);
-        setHasLeafItemGroup(hasLeaf);
-        setHasRequiredItemGroup(hasRequired);
+        const parsed = parseItemGroupStatus(groups);
+        setHasItemGroupParent(parsed.hasItemGroupParent);
+        setHasLeafItemGroup(parsed.hasLeafItemGroup);
+        setHasRequiredItemGroup(parsed.hasRequiredItemGroup);
       } catch (error) {
         setItemGroupCheckError(
           getApiErrorMessage(error, "Could not read Item Group list. Check Item Group permissions.")
@@ -218,13 +247,7 @@ export default function AddCompanyPage() {
             field: "setup_complete"
           }
         });
-        const raw = setupRes.data?.message;
-        const done =
-          raw === 1 ||
-          raw === "1" ||
-          raw === true ||
-          (typeof raw === "string" && raw.toLowerCase() === "yes");
-        setErpSetupComplete(done);
+        setErpSetupComplete(parseSetupComplete(setupRes.data?.message));
       } catch (error) {
         setSetupCompleteCheckError(
           getApiErrorMessage(error, "Could not verify ERPNext setup completion.")
@@ -352,17 +375,35 @@ export default function AddCompanyPage() {
               disabled={loadingMasters}
               className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loadingMasters ? "Checking..." : "Re-check"}
+              {loadingMasters ? CHECKING_LABEL : "Re-check"}
             </button>
           </div>
         </div>
         <ul className="space-y-1 text-slate-700">
-          <li>{setupCompleteCheckError ? "Unknown" : erpSetupComplete ? "OK" : "Missing"} - ERPNext setup wizard complete</li>
-          <li>{countryNames.length > 0 ? "OK" : "Missing"} - Country masters</li>
-          <li>{currencyNames.length > 0 ? "OK" : "Missing"} - Currency masters</li>
-          <li>{itemGroupCheckError ? "Unknown" : hasItemGroupParent ? "OK" : "Missing"} - Item Group parent nodes</li>
-          <li>{itemGroupCheckError ? "Unknown" : hasLeafItemGroup ? "OK" : "Missing"} - Leaf Item Group for items/lots</li>
-          <li>{itemGroupCheckError ? "Unknown" : hasRequiredItemGroup ? "OK" : "Missing"} - Required Item Group: {REQUIRED_ITEM_GROUP}</li>
+          <ReadinessRow
+            status={setupCompleteCheckError ? "Unknown" : erpSetupComplete ? "OK" : "Missing"}
+            label="ERPNext setup wizard complete"
+          />
+          <ReadinessRow
+            status={countryNames.length > 0 ? "OK" : "Missing"}
+            label="Country masters"
+          />
+          <ReadinessRow
+            status={currencyNames.length > 0 ? "OK" : "Missing"}
+            label="Currency masters"
+          />
+          <ReadinessRow
+            status={itemGroupCheckError ? "Unknown" : hasItemGroupParent ? "OK" : "Missing"}
+            label="Item Group parent nodes"
+          />
+          <ReadinessRow
+            status={itemGroupCheckError ? "Unknown" : hasLeafItemGroup ? "OK" : "Missing"}
+            label="Leaf Item Group for items/lots"
+          />
+          <ReadinessRow
+            status={itemGroupCheckError ? "Unknown" : hasRequiredItemGroup ? "OK" : "Missing"}
+            label={`Required Item Group: ${REQUIRED_ITEM_GROUP}`}
+          />
         </ul>
         {setupCompleteCheckError ? (
           <p className="mt-2 text-amber-700">{setupCompleteCheckError}</p>
@@ -434,7 +475,7 @@ export default function AddCompanyPage() {
               value={abbr}
               onChange={(e) => setAbbr(e.target.value.toUpperCase())}
               maxLength={10}
-              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+              className={INPUT_CLASS}
               placeholder="Short code (auto if empty)"
             />
             <p className="mt-1 text-xs text-slate-500">
@@ -449,7 +490,7 @@ export default function AddCompanyPage() {
                 value={defaultCurrency}
                 onChange={(e) => setDefaultCurrency(e.target.value)}
                 required
-                className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+                className={INPUT_CLASS}
               >
                 {currencyNames.map((n) => (
                   <option key={n} value={n}>
@@ -468,7 +509,7 @@ export default function AddCompanyPage() {
                   setCountryAddr(v);
                 }}
                 required
-                className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+                className={INPUT_CLASS}
               >
                 {countryNames.map((n) => (
                   <option key={n} value={n}>
@@ -484,7 +525,7 @@ export default function AddCompanyPage() {
             <input
               value={gstin}
               onChange={(e) => setGstin(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+              className={INPUT_CLASS}
               placeholder="Optional"
             />
           </div>
@@ -494,7 +535,7 @@ export default function AddCompanyPage() {
             <input
               value={pan}
               onChange={(e) => setPan(e.target.value.toUpperCase())}
-              className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+              className={INPUT_CLASS}
               placeholder="Optional (India: Company PAN if field exists)"
             />
           </div>
@@ -511,7 +552,7 @@ export default function AddCompanyPage() {
                 value={addressLine}
                 onChange={(e) => setAddressLine(e.target.value)}
                 rows={3}
-                className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+                className={INPUT_CLASS}
               />
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -520,7 +561,7 @@ export default function AddCompanyPage() {
                 <input
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+                  className={INPUT_CLASS}
                 />
               </div>
               <div>
@@ -528,7 +569,7 @@ export default function AddCompanyPage() {
                 <input
                   value={state}
                   onChange={(e) => setState(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+                  className={INPUT_CLASS}
                 />
               </div>
             </div>
@@ -538,7 +579,7 @@ export default function AddCompanyPage() {
                 <input
                   value={pincode}
                   onChange={(e) => setPincode(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+                  className={INPUT_CLASS}
                 />
               </div>
               <div>
@@ -546,7 +587,7 @@ export default function AddCompanyPage() {
                 <select
                   value={countryAddr}
                   onChange={(e) => setCountryAddr(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+                  className={INPUT_CLASS}
                 >
                   {countryNames.map((n) => (
                     <option key={n} value={n}>
