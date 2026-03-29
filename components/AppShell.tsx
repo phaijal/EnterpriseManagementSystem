@@ -226,7 +226,9 @@ function AppShellInner({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {!backendReachable ? (
           <div className="border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:px-6 lg:px-8">
-            ERPNext backend is not reachable. Please run <strong>EMSLauncher.exe</strong>, then refresh.
+            ERPNext backend is not reachable. Start Docker Desktop, bring up the stack (for example{" "}
+            <code className="rounded bg-amber-100/80 px-1">docker compose -f docker-compose.erpnext.yml up -d</code>
+            ), then refresh.
           </div>
         ) : null}
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">

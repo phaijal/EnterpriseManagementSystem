@@ -312,7 +312,7 @@ function Find-RepoRoot {
     }
   }
 
-  throw "Could not find docker-compose.erpnext.yml. Place EMSLauncher.exe in the project folder (same folder as docker-compose.erpnext.yml) or run windows\EMSLauncher.ps1 from the repo."
+  throw "Could not find docker-compose.erpnext.yml. Run from the project folder (same folder as docker-compose.erpnext.yml), e.g. powershell -File .\windows\EMSLauncher.ps1"
 }
 
 function Invoke-EmsStartupWork {
