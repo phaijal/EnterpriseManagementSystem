@@ -108,7 +108,7 @@ if ([string]::IsNullOrWhiteSpace($backendCid)) {
 Write-Host "Copying $($filesToCopy.Count) backup file(s) to $backupDir …"
 foreach ($containerFile in $filesToCopy) {
   $target = Join-Path $backupDir ([System.IO.Path]::GetFileName($containerFile))
-  & docker cp "$backendCid:$containerFile" "$target" | Out-Null
+  & docker cp "${backendCid}:$containerFile" "$target" | Out-Null
 }
 
 $copied = Get-ChildItem -Path $backupDir -File | Where-Object {
