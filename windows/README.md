@@ -90,7 +90,7 @@ docker compose -f docker-compose.erpnext.yml cp "D:\erp backups\$prefix-frontend
 4. Restore with bench inside backend container:
 
 ```powershell
-docker compose -f docker-compose.erpnext.yml exec -T backend bench --site frontend --force restore /home/frappe/frappe-bench/sites/frontend/private/backups/20260329_223033-frontend-database.sql.gz
+docker compose -f docker-compose.erpnext.yml exec -T backend bench --site frontend --force restore /home/frappe/frappe-bench/sites/frontend/private/backups/20260329_223033-frontend-database.sql.gz --force --db-root-password admin
 ```
 
 5. Restore files:
