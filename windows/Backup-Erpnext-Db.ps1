@@ -1,5 +1,5 @@
 param(
-  # Optional. Example: 'D:\erp backups'. Else BACKUP_DIR env var, else <repo>\backups.
+  # Optional. Else BACKUP_DIR env var, else D:\erp backups (if D: exists), else <repo>\backups.
   [string]$BackupDir = ""
 )
 
@@ -41,39 +41,24 @@ function Find-RepoRoot {
   throw "Could not find docker-compose.erpnext.yml (run from the project repo root, or set location to the folder that contains docker-compose.erpnext.yml)."
 }
 
-function Read-DotEnvPassword {
-  param([string]$RootPath)
-  $envPath = Join-Path $RootPath ".env"
-  if (-not (Test-Path $envPath)) {
-    return "admin"
-  }
-  foreach ($line in Get-Content $envPath -Encoding UTF8) {
-    $t = $line.Trim()
-    if ($t.Length -eq 0 -or $t.StartsWith("#")) {
-      continue
-    }
-    if ($t -match '^\s*ERPNEXT_DB_ROOT_PASSWORD\s*=\s*(.*)$') {
-      $val = $Matches[1].Trim()
-      if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
-        $val = $val.Substring(1, $val.Length - 2)
-      }
-      return $val
-    }
-  }
-  return "admin"
-}
-
 $root = Find-RepoRoot
 Set-Location $root
 
 $composeFile = "docker-compose.erpnext.yml"
+$siteName = "frontend"
+$containerBackupDir = "/home/frappe/frappe-bench/sites/$siteName/private/backups"
 
 $resolvedBackup = $BackupDir
 if ([string]::IsNullOrWhiteSpace($resolvedBackup)) {
   $resolvedBackup = $env:BACKUP_DIR
 }
 if ([string]::IsNullOrWhiteSpace($resolvedBackup)) {
-  $backupDir = Join-Path $root "backups"
+  if (Test-Path -LiteralPath "D:\") {
+    $backupDir = "D:\erp backups"
+  }
+  else {
+    $backupDir = Join-Path $root "backups"
+  }
 }
 else {
   $backupDir = [System.IO.Path]::GetFullPath($resolvedBackup.Trim())
@@ -86,53 +71,56 @@ if ($env:RETENTION_DAYS) {
 
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 
-$password = Read-DotEnvPassword -RootPath $root
-$stamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
-$sqlName = "erpnext-db-$stamp.sql"
-$sqlPath = Join-Path $backupDir $sqlName
-$zipPath = "$sqlPath.zip"
-$errPath = Join-Path $backupDir "erpnext-db-$stamp.stderr.txt"
-
-$ping = & docker compose -f $composeFile exec -T db mysqladmin ping -h localhost -uroot "-p$password" --silent 2>&1
+Write-Host "Running bench backup for site '$siteName' (with files) …"
+$backupRun = & docker compose -f $composeFile exec -T backend bench --site $siteName backup --with-files 2>&1
 if ($LASTEXITCODE -ne 0) {
-  throw "MariaDB (db service) is not reachable. Start Docker Desktop and your stack, then retry."
+  $backupRun | Write-Host
+  throw "bench backup failed. Ensure backend is running and site '$siteName' exists."
 }
 
-Write-Host "Backing up to $zipPath …"
+$latestDbPath = (
+  & docker compose -f $composeFile exec -T backend bash -lc "ls -1t $containerBackupDir/*-$siteName-database.sql.gz 2>/dev/null | sed -n '1p'"
+).Trim()
 
-$proc = Start-Process -FilePath "docker" -WorkingDirectory $root -ArgumentList @(
-  "compose", "-f", $composeFile, "exec", "-T",
-  "-e", "MYSQL_PWD=$password",
-  "db", "mysqldump", "-uroot",
-  "--single-transaction", "--quick", "--routines", "--events", "--all-databases"
-) -RedirectStandardOutput $sqlPath -RedirectStandardError $errPath -NoNewWindow -Wait -PassThru
-
-if ($proc.ExitCode -ne 0) {
-  if (Test-Path $errPath) {
-    Get-Content $errPath -ErrorAction SilentlyContinue | Write-Host
-  }
-  Remove-Item -LiteralPath $sqlPath -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $errPath -Force -ErrorAction SilentlyContinue
-  throw "mysqldump failed (exit $($proc.ExitCode))."
+if ([string]::IsNullOrWhiteSpace($latestDbPath)) {
+  throw "Could not locate latest bench database backup in $containerBackupDir."
 }
 
-if (Test-Path $errPath) {
-  $errRaw = Get-Content $errPath -Raw -ErrorAction SilentlyContinue
-  $warn = if ($null -eq $errRaw) { "" } else { $errRaw.Trim() }
-  if ($warn.Length -gt 0) {
-    Write-Host $warn
-  }
-  Remove-Item -LiteralPath $errPath -Force -ErrorAction SilentlyContinue
+$latestDbName = [System.IO.Path]::GetFileName($latestDbPath)
+$prefix = $latestDbName -replace "-$siteName-database\.sql\.gz$", ""
+if ([string]::IsNullOrWhiteSpace($prefix)) {
+  throw "Could not parse backup prefix from '$latestDbName'."
 }
 
-Compress-Archive -Path $sqlPath -DestinationPath $zipPath -Force
-Remove-Item -LiteralPath $sqlPath -Force
+$filesToCopy = (
+  & docker compose -f $composeFile exec -T backend bash -lc "ls -1 $containerBackupDir/$prefix-$siteName-* 2>/dev/null"
+) -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 
-$size = (Get-Item $zipPath).Length
-Write-Host "Done ($([math]::Round($size / 1MB, 2)) MB zip)."
+if ($filesToCopy.Count -eq 0) {
+  throw "No bench backup files found for prefix '$prefix'."
+}
+
+$backendCid = (& docker compose -f $composeFile ps -q backend).Trim()
+if ([string]::IsNullOrWhiteSpace($backendCid)) {
+  throw "Could not resolve backend container id for copying backup files."
+}
+
+Write-Host "Copying $($filesToCopy.Count) backup file(s) to $backupDir …"
+foreach ($containerFile in $filesToCopy) {
+  $target = Join-Path $backupDir ([System.IO.Path]::GetFileName($containerFile))
+  & docker cp "$backendCid:$containerFile" "$target" | Out-Null
+}
+
+$copied = Get-ChildItem -Path $backupDir -File | Where-Object {
+  $_.Name -like "$prefix-$siteName-*"
+}
+$totalBytes = ($copied | Measure-Object -Property Length -Sum).Sum
+$totalMB = if ($null -eq $totalBytes) { 0 } else { [math]::Round($totalBytes / 1MB, 2) }
+Write-Host "Done. Saved prefix '$prefix' ($($copied.Count) file(s), $totalMB MB total)."
 
 $cutoff = (Get-Date).AddDays(-$retentionDays)
-Get-ChildItem -Path $backupDir -File -Filter "erpnext-db-*.sql.zip" -ErrorAction SilentlyContinue |
+Get-ChildItem -Path $backupDir -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -like "*-$siteName-*" } |
   Where-Object { $_.LastWriteTime -lt $cutoff } |
   ForEach-Object {
     Write-Host "Removing old backup: $($_.Name)"
