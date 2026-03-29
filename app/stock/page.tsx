@@ -46,6 +46,7 @@ type StockEntryDetailResponse = {
       item_code?: string;
       t_warehouse?: string;
       s_warehouse?: string;
+      qty?: number;
       custom_cops?: number;
       custom_tare_weight?: number;
       custom_gross_weight?: number;

@@ -89,8 +89,44 @@ function Wait-ForServer {
   throw "UI did not become ready in time at $url."
 }
 
+function Find-RepoRoot {
+  $starts = New-Object System.Collections.Generic.List[string]
+  if ($PSScriptRoot) {
+    $starts.Add((Resolve-Path $PSScriptRoot).Path) | Out-Null
+  }
+  try {
+    $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    if ($exePath -and ($exePath -match '\.(exe|EXE)$')) {
+      $starts.Add((Split-Path -Parent $exePath)) | Out-Null
+    }
+  }
+  catch {
+    # Ignore if MainModule is unavailable.
+  }
+
+  foreach ($start in ($starts | Select-Object -Unique)) {
+    $dir = $start
+    for ($i = 0; $i -lt 8; $i++) {
+      if ([string]::IsNullOrWhiteSpace($dir)) {
+        break
+      }
+      $compose = Join-Path $dir "docker-compose.erpnext.yml"
+      if (Test-Path $compose) {
+        return (Resolve-Path $dir).Path
+      }
+      $parent = Split-Path -Parent $dir
+      if ($parent -eq $dir) {
+        break
+      }
+      $dir = $parent
+    }
+  }
+
+  throw "Could not find docker-compose.erpnext.yml. Place EMSLauncher.exe in the project folder (same folder as docker-compose.erpnext.yml) or run windows\EMSLauncher.ps1 from the repo."
+}
+
 try {
-  Set-Location (Resolve-Path "$PSScriptRoot\..")
+  Set-Location (Find-RepoRoot)
 
   Ensure-DockerInstalled
   Ensure-DockerRunning
