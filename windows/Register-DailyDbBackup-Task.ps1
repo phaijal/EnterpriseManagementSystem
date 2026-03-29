@@ -56,6 +56,7 @@ Register-ScheduledTask `
   -Description "Daily ERPNext bench backup (database + files) for site frontend." `
   -Force | Out-Null
 
-Write-Host "Registered scheduled task: $taskName (daily at $($hour.ToString('00')):$($minute.ToString('00')) — 24h clock, runs when you are logged in)."
+$timeLabel = "{0:00}:{1:00}" -f $hour, $minute
+Write-Host "Registered scheduled task: $taskName (daily at $timeLabel - 24h clock, runs when you are logged in)."
 Write-Host "Backup folder: $bd"
-Write-Host "View in Task Scheduler (taskschd.msc) or: Get-ScheduledTask -TaskName '$taskName'"
+Write-Host ('View in Task Scheduler (taskschd.msc) or: Get-ScheduledTask -TaskName "{0}"' -f $taskName)
