@@ -1,5 +1,5 @@
 param(
-  # Example: 'D:\erp backups' — stored in the scheduled task. Or set env BACKUP_DIR before running this script.
+  # Stored in the scheduled task. Default: D:\erp backups. Override with env BACKUP_DIR or -BackupDir.
   [string]$BackupDir = ""
 )
 
@@ -27,14 +27,12 @@ $backupDirArg = $BackupDir
 if ([string]::IsNullOrWhiteSpace($backupDirArg)) {
   $backupDirArg = $env:BACKUP_DIR
 }
+if ([string]::IsNullOrWhiteSpace($backupDirArg)) {
+  $backupDirArg = "D:\erp backups"
+}
 
-if (-not [string]::IsNullOrWhiteSpace($backupDirArg)) {
-  $bd = $backupDirArg.Trim()
-  $psArgument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -BackupDir `"$bd`""
-}
-else {
-  $psArgument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
-}
+$bd = $backupDirArg.Trim()
+$psArgument = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -BackupDir `"$bd`""
 
 $action = New-ScheduledTaskAction `
   -Execute "powershell.exe" `
@@ -55,14 +53,9 @@ Register-ScheduledTask `
   -Trigger $trigger `
   -Settings $settings `
   -Principal $principal `
-  -Description "Daily mysqldump of ERPNext MariaDB (docker compose erpnext-local)." `
+  -Description "Daily ERPNext bench backup (database + files) for site frontend." `
   -Force | Out-Null
 
 Write-Host "Registered scheduled task: $taskName (daily at $($hour.ToString('00')):$($minute.ToString('00')) — 24h clock, runs when you are logged in)."
-if (-not [string]::IsNullOrWhiteSpace($backupDirArg)) {
-  Write-Host "Backup folder: $($backupDirArg.Trim())"
-}
-else {
-  Write-Host "Backup folder: $($root.Path)\backups (default)"
-}
+Write-Host "Backup folder: $bd"
 Write-Host "View in Task Scheduler (taskschd.msc) or: Get-ScheduledTask -TaskName '$taskName'"

@@ -198,6 +198,11 @@ export function buildChallanHtmlDocument(opts: {
   <section class="sheet">
     <p class="subtitle">Delivery Challan</p>
     <p class="top-title">${esc(companyParty.name || opts.company || "—")}</p>
+    <p class="subtitle">
+      ${esc((companyParty.addressLines || []).join(", ") || "—")}
+      <br />
+      GSTIN: ${esc(companyParty.gstin || "—")}
+    </p>
 
     <section class="meta-grid" aria-label="Parties and challan meta">
       <div class="meta-left">

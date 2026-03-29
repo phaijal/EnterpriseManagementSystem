@@ -36,6 +36,12 @@ type StockEntryListResponse = {
   }>;
 };
 
+type CompanyResponse = {
+  data: Array<{
+    name?: string;
+  }>;
+};
+
 const CUSTOM_FIELDS = {
   box: "custom_box_no",
   cops: "custom_cops",
@@ -98,6 +104,7 @@ export default function AddStockPage() {
   const [printSlipsOnSubmit, setPrintSlipsOnSubmit] = useState(true);
   /** Last generated slips HTML — used for “Print again” if the post-submit print was blocked or cancelled. */
   const [slipsHtmlForPrint, setSlipsHtmlForPrint] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState("");
 
   const sessionLocked = queue.length > 0;
 
@@ -198,6 +205,20 @@ export default function AddStockPage() {
     };
 
     fetchWarehouses();
+  }, []);
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      try {
+        const response = await api.get<CompanyResponse>(
+          '/api/resource/Company?fields=["name"]&limit_page_length=1'
+        );
+        setCompanyName(response.data.data?.[0]?.name || "");
+      } catch {
+        setCompanyName("");
+      }
+    };
+    void fetchCompanyName();
   }, []);
 
   const refreshNextBoxHint = useCallback(async () => {
@@ -341,6 +362,7 @@ export default function AddStockPage() {
     if (printSlipsOnSubmit) {
       const html = buildBoxSlipsHtmlDocument({
         itemCode,
+        organizationName: companyName || undefined,
         printedAt: new Date().toLocaleString(undefined, {
           dateStyle: "medium",
           timeStyle: "short"
@@ -538,7 +560,8 @@ export default function AddStockPage() {
         <div className="mb-6 overflow-hidden rounded-lg border">
           <div className="border-b bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800">
             Queue ({queue.length} box{queue.length === 1 ? "" : "es"}) — {UI_LOT_NO} {itemCode}, cop
-            weight {copWeight.toFixed(3)} {WEIGHT_UNIT_LABEL}
+            weight {copWeight.toFixed(3)} {WEIGHT_UNIT_LABEL}, grades{" "}
+            {Array.from(new Set(queue.map((row) => row.grade))).join(", ")}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
