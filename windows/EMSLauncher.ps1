@@ -13,6 +13,31 @@ $Script:LogBox = $null
 $Script:CloseBtn = $null
 $Script:AllowClose = $false
 
+function Register-UiExceptionHandlers {
+  # Pool-thread Docker output uses Form.Invoke; failures there must not kill the process.
+  [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
+  $handler = [System.Threading.ThreadExceptionEventHandler]{
+    param($sender, $e)
+    try {
+      if ($null -ne $Script:LogBox) {
+        $Script:LogBox.AppendText("[$(Get-Date -Format 'HH:mm:ss')] FATAL UI: $($e.Exception.Message)`r`n")
+      }
+      $Script:AllowClose = $true
+      if ($null -ne $Script:CloseBtn) {
+        $Script:CloseBtn.Enabled = $true
+      }
+      if ($null -ne $Script:Form) {
+        $Script:Form.Text = "EMS — Error"
+      }
+    }
+    catch {
+      # Ignore secondary failures.
+    }
+    $e.ExceptionHandled = $true
+  }
+  [void][System.Windows.Forms.Application]::add_ThreadException($handler)
+}
+
 function Write-Status {
   param([string]$Message)
   if ($null -eq $Script:LogBox) {
@@ -108,7 +133,10 @@ function Stop-UiIfRunning {
 }
 
 function Invoke-DockerLogged {
-  param([string]$Arguments)
+  param(
+    [string]$Arguments,
+    [switch]$AllowNonZeroExit
+  )
 
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = "docker"
@@ -123,8 +151,8 @@ function Invoke-DockerLogged {
   $proc.EnableRaisingEvents = $true
   $proc.StartInfo = $psi
 
-  $append = [System.Action[string]]{
-    param($text)
+  $appendLine = {
+    param([string]$text)
     if ([string]::IsNullOrEmpty($text)) {
       return
     }
@@ -136,11 +164,27 @@ function Invoke-DockerLogged {
 
   $onLine = [System.Diagnostics.DataReceivedEventHandler]{
     param($sender, $e)
-    $text = $e.Data
-    if ($null -eq $text) {
-      return
+    try {
+      $text = $e.Data
+      if ($null -eq $text) {
+        return
+      }
+      if (-not $Script:Form.IsHandleCreated) {
+        return
+      }
+      $lineCopy = [string]$text
+      [void]$Script:Form.Invoke([System.Action]{
+        try {
+          & $appendLine $lineCopy
+        }
+        catch {
+          # Avoid crashing the pool thread if the log control errors.
+        }
+      })
     }
-    [void]$Script:Form.Invoke($append, $text)
+    catch {
+      # Ignore marshal/invoke failures during shutdown.
+    }
   }
 
   $proc.add_OutputDataReceived($onLine)
@@ -155,23 +199,55 @@ function Invoke-DockerLogged {
       [System.Windows.Forms.Application]::DoEvents()
       Start-Sleep -Milliseconds 50
     }
-    Start-Sleep -Milliseconds 150
+    try {
+      $proc.WaitForExit(30000) | Out-Null
+    }
+    catch {
+      # Ignore.
+    }
+    Start-Sleep -Milliseconds 200
     [System.Windows.Forms.Application]::DoEvents()
 
+    try {
+      $proc.CancelOutputRead()
+      $proc.CancelErrorRead()
+    }
+    catch {
+      # Ignore if not supported or already completed.
+    }
+
     if ($proc.ExitCode -ne 0) {
-      throw "Docker failed (exit $($proc.ExitCode)). See log above."
+      if ($AllowNonZeroExit) {
+        Write-Status "Docker finished with exit code $($proc.ExitCode) (continuing)."
+      }
+      else {
+        throw "Docker failed (exit $($proc.ExitCode)). See log above."
+      }
     }
   }
   finally {
+    try {
+      $proc.remove_OutputDataReceived($onLine)
+      $proc.remove_ErrorDataReceived($onLine)
+    }
+    catch {
+      # Ignore.
+    }
     if ($null -ne $proc) {
-      $proc.Dispose()
+      try {
+        $proc.Dispose()
+      }
+      catch {
+        # Ignore.
+      }
     }
   }
 }
 
 function Restart-Compose {
   Write-Status "Running: docker compose down"
-  Invoke-DockerLogged -Arguments "compose -f docker-compose.erpnext.yml down"
+  # down often returns non-zero when nothing was running; do not abort the launcher.
+  Invoke-DockerLogged -Arguments "compose -f docker-compose.erpnext.yml down" -AllowNonZeroExit
   Write-Status "Running: docker compose up -d --build (may take several minutes on first run)…"
   Invoke-DockerLogged -Arguments "compose -f docker-compose.erpnext.yml up -d --build"
 }
@@ -299,6 +375,8 @@ $form.Add_FormClosing({
 $Script:Form = $form
 $Script:LogBox = $logBox
 $Script:CloseBtn = $closeBtn
+
+Register-UiExceptionHandlers
 
 $form.Add_Shown({
   $form.BeginInvoke([System.Action]{
