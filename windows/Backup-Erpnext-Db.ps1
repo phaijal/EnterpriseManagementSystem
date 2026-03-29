@@ -117,7 +117,8 @@ if ($proc.ExitCode -ne 0) {
 }
 
 if (Test-Path $errPath) {
-  $warn = (Get-Content $errPath -Raw -ErrorAction SilentlyContinue).Trim()
+  $errRaw = Get-Content $errPath -Raw -ErrorAction SilentlyContinue
+  $warn = if ($null -eq $errRaw) { "" } else { $errRaw.Trim() }
   if ($warn.Length -gt 0) {
     Write-Host $warn
   }
