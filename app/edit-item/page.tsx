@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, getApiErrorMessage } from "@/lib/api";
 import {
@@ -23,7 +23,7 @@ type ItemDocResponse = {
   data?: Record<string, unknown>;
 };
 
-export default function EditItemPage() {
+function EditItemPageInner() {
   const searchParams = useSearchParams();
   const initialItemCode = (searchParams.get("name") || "").trim();
   const [itemOptions, setItemOptions] = useState<string[]>([]);
@@ -199,5 +199,20 @@ export default function EditItemPage() {
         <p className="mt-4 rounded-lg bg-emerald-100 px-3 py-2 text-sm text-emerald-800">{successMessage}</p>
       ) : null}
     </section>
+  );
+}
+
+export default function EditItemPage() {
+  return (
+    <Suspense
+      fallback={
+        <section className="mx-auto w-full max-w-xl rounded-xl bg-white p-6 shadow-sm">
+          <h1 className="mb-6 text-2xl font-bold text-slate-900">Edit lot</h1>
+          <p className="text-sm text-slate-600">Loading…</p>
+        </section>
+      }
+    >
+      <EditItemPageInner />
+    </Suspense>
   );
 }
