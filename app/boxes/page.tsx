@@ -21,6 +21,7 @@ type StockEntryListResponse = {
     name: string;
     remarks?: string;
     creation?: string;
+    docstatus?: 0 | 1 | 2;
   }>;
 };
 
@@ -64,6 +65,7 @@ type BoxRow = {
   gross_weight: number | "-";
   net_weight: number;
   stock_entry: string;
+  docstatus: 0 | 1 | 2;
 };
 
 type EditDraft = {
@@ -117,6 +119,17 @@ export default function BoxesPage() {
   const [useCustomFields, setUseCustomFields] = useState(false);
   const [useGradeLotCustom, setUseGradeLotCustom] = useState(false);
 
+  const makeDraftFromRow = (row: BoxRow): EditDraft => {
+    const boxMatch = row.box.match(/(\d+)/);
+    return {
+      box: boxMatch ? boxMatch[1] : "",
+      cops: typeof row.cops === "number" ? row.cops : 0,
+      tare_weight: typeof row.tare_weight === "number" ? row.tare_weight : 0,
+      gross_weight: typeof row.gross_weight === "number" ? row.gross_weight : 0,
+      grade: row.grade !== "—" ? row.grade : "1ST"
+    };
+  };
+
   useEffect(() => {
     const detectCustomFields = async () => {
       try {
@@ -154,10 +167,10 @@ export default function BoxesPage() {
           "/api/resource/Stock Entry",
           {
             params: {
-              fields: JSON.stringify(["name", "remarks", "creation"]),
+              fields: JSON.stringify(["name", "remarks", "creation", "docstatus"]),
               filters: JSON.stringify([
                 ["stock_entry_type", "=", "Material Receipt"],
-                ["docstatus", "=", 1]
+                ["docstatus", "in", [0, 1]]
               ]),
               order_by: "creation desc",
               limit_page_length: 300
@@ -229,7 +242,8 @@ export default function BoxesPage() {
               tare_weight: tare ?? parsed.tare ?? "-",
               gross_weight: gross ?? parsed.gross ?? "-",
               net_weight: net ?? parsed.net ?? firstItem?.qty ?? 0,
-              stock_entry: entry.name
+              stock_entry: entry.name,
+              docstatus: entry.docstatus ?? 0
             };
           })
           .filter((row): row is BoxRow => Boolean(row));
@@ -262,10 +276,10 @@ export default function BoxesPage() {
         "/api/resource/Stock Entry",
         {
           params: {
-            fields: JSON.stringify(["name", "remarks", "creation"]),
+            fields: JSON.stringify(["name", "remarks", "creation", "docstatus"]),
             filters: JSON.stringify([
               ["stock_entry_type", "=", "Material Receipt"],
-              ["docstatus", "=", 1]
+              ["docstatus", "in", [0, 1]]
             ]),
             order_by: "creation desc",
             limit_page_length: 300
@@ -337,7 +351,8 @@ export default function BoxesPage() {
             tare_weight: tare ?? parsed.tare ?? "-",
             gross_weight: gross ?? parsed.gross ?? "-",
             net_weight: net ?? parsed.net ?? firstItem?.qty ?? 0,
-            stock_entry: entry.name
+            stock_entry: entry.name,
+            docstatus: entry.docstatus ?? 0
           };
         })
         .filter((row): row is BoxRow => Boolean(row));
@@ -353,15 +368,110 @@ export default function BoxesPage() {
   };
 
   const startEdit = (row: BoxRow) => {
-    const boxMatch = row.box.match(/(\d+)/);
     setEditingEntry(row.stock_entry);
-    setDraft({
-      box: boxMatch ? boxMatch[1] : "",
-      cops: typeof row.cops === "number" ? row.cops : 0,
-      tare_weight: typeof row.tare_weight === "number" ? row.tare_weight : 0,
-      gross_weight: typeof row.gross_weight === "number" ? row.gross_weight : 0,
-      grade: row.grade !== "—" ? row.grade : "1ST"
-    });
+    setDraft(makeDraftFromRow(row));
+  };
+
+  const retryDraftSubmit = async (row: BoxRow, editedDraft?: EditDraft | null) => {
+    const payload = editedDraft ?? makeDraftFromRow(row);
+    const net = Math.max(0, payload.gross_weight - payload.tare_weight);
+    if (net <= 0) {
+      alert("Net weight must be positive to retry submit.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const existingResponse = await api.get(`/api/resource/Stock Entry/${row.stock_entry}`);
+      const existingDoc = existingResponse.data?.data;
+      const firstItem = existingDoc?.items?.[0];
+      if (!existingDoc || !firstItem) {
+        throw new Error("Unable to load failed Stock Entry details.");
+      }
+
+      const lotClean = sanitizeLotForRemarks(firstItem.item_code || "");
+      if (!lotClean) {
+        alert(`${UI_LOT_NO} is missing on this stock line.`);
+        return;
+      }
+
+      const copw = parseRemarkToken(existingDoc.remarks, "COPW");
+      let remarks = `BOX:${payload.box};COPS:${payload.cops};GROSS:${payload.gross_weight};TARE:${payload.tare_weight};NET:${net}`;
+      if (copw !== undefined && copw !== "") remarks += `;COPW:${copw}`;
+      remarks += `;GRADE:${payload.grade};LOT:${lotClean}`;
+      remarks += buildLotAttrsRemarkSuffix(parseLotAttrsFromRemarks(existingDoc.remarks));
+
+      const recreatedResponse = await api.post("/api/resource/Stock Entry", {
+        stock_entry_type: existingDoc.stock_entry_type || "Material Receipt",
+        company: existingDoc.company,
+        posting_date: existingDoc.posting_date,
+        posting_time: existingDoc.posting_time,
+        remarks,
+        items: [
+          {
+            item_code: firstItem.item_code,
+            qty: net,
+            t_warehouse: firstItem.t_warehouse,
+            s_warehouse: firstItem.s_warehouse,
+            allow_zero_valuation_rate: firstItem.allow_zero_valuation_rate ?? 1,
+            basic_rate: firstItem.basic_rate ?? 0,
+            ...(useCustomFields
+              ? {
+                  [CUSTOM_FIELDS.box]: Number(payload.box || 0),
+                  [CUSTOM_FIELDS.cops]: payload.cops,
+                  [CUSTOM_FIELDS.tare]: payload.tare_weight,
+                  [CUSTOM_FIELDS.gross]: payload.gross_weight,
+                  [CUSTOM_FIELDS.net]: net
+                }
+              : {}),
+            ...(useGradeLotCustom
+              ? {
+                  [CUSTOM_FIELDS.grade]: payload.grade,
+                  [CUSTOM_FIELDS.lot]: lotClean
+                }
+              : {})
+          }
+        ]
+      });
+
+      const recreatedDoc = recreatedResponse.data?.data;
+      if (!recreatedDoc) {
+        throw new Error("Failed to create replacement Stock Entry.");
+      }
+
+      await api.post("/api/method/frappe.client.submit", {
+        doc: JSON.stringify(recreatedDoc)
+      });
+
+      await api.delete(`/api/resource/Stock Entry/${encodeURIComponent(row.stock_entry)}`);
+
+      setEditingEntry(null);
+      setDraft(null);
+      await refreshBoxes();
+      alert("Draft box retried and submitted successfully.");
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to retry draft box."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeDraftEntry = async (row: BoxRow) => {
+    if (row.docstatus === 1) return;
+    if (!window.confirm(`Remove failed/pending draft ${row.box}?`)) return;
+    setSaving(true);
+    try {
+      await api.delete(`/api/resource/Stock Entry/${encodeURIComponent(row.stock_entry)}`);
+      if (editingEntry === row.stock_entry) {
+        setEditingEntry(null);
+        setDraft(null);
+      }
+      await refreshBoxes();
+    } catch (error) {
+      alert(getApiErrorMessage(error, "Failed to remove draft entry."));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveEdit = async (row: BoxRow) => {
@@ -570,6 +680,7 @@ export default function BoxesPage() {
                 <th className="px-4 py-3">{weightLabel("Tare weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Gross weight")}</th>
                 <th className="px-4 py-3">{weightLabel("Net weight")}</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Challan</th>
                 <th className="sticky right-0 z-10 bg-slate-100 px-4 py-3 text-right">Action</th>
               </tr>
@@ -685,6 +796,17 @@ export default function BoxesPage() {
                         : row.net_weight}
                     </td>
                     <td className="px-4 py-3 text-slate-800">
+                      {row.docstatus === 1 ? (
+                        <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900">
+                          Submitted
+                        </span>
+                      ) : (
+                        <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                          Draft (submit failed/pending)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-800">
                       {challanByStockEntry[row.stock_entry] ? (
                         <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
                           {challanByStockEntry[row.stock_entry]}
@@ -703,7 +825,58 @@ export default function BoxesPage() {
                         >
                           {slipPrinting === row.stock_entry ? "…" : "Print slip"}
                         </button>
-                        {challanByStockEntry[row.stock_entry] ? (
+                        {row.docstatus !== 1 ? (
+                          editingEntry === row.stock_entry ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={saving || !draft}
+                                onClick={() => void retryDraftSubmit(row, draft)}
+                                className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white disabled:bg-slate-500"
+                              >
+                                {saving ? "Saving..." : "Save & Retry"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => {
+                                  setEditingEntry(null);
+                                  setDraft(null);
+                                }}
+                                className="rounded bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-800"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => startEdit(row)}
+                                className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => void retryDraftSubmit(row)}
+                                className="rounded bg-emerald-700 px-2 py-1 text-xs font-semibold text-white disabled:bg-emerald-400"
+                              >
+                                Retry
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => void removeDraftEntry(row)}
+                                className="rounded bg-red-700 px-2 py-1 text-xs font-semibold text-white disabled:bg-red-400"
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )
+                        ) : challanByStockEntry[row.stock_entry] ? (
                           <span className="self-center text-xs text-slate-500">On challan</span>
                         ) : editingEntry === row.stock_entry ? (
                           <>
@@ -742,7 +915,7 @@ export default function BoxesPage() {
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={9}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={10}>
                     No box records found.
                   </td>
                 </tr>
