@@ -323,10 +323,9 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         border: none;
         page-break-after: always;
         break-after: page;
-        width: 70mm;
-        height: 90mm;
+        width: 90mm;
+        height: 70mm;
         overflow: hidden;
-        position: relative;
       }
       .slip:last-of-type {
         page-break-after: auto;
@@ -339,11 +338,6 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         box-shadow: none;
         border-width: 0.3mm;
         font-family: Arial, Helvetica, sans-serif;
-        position: absolute;
-        top: 0;
-        left: 0;
-        transform-origin: top left;
-        transform: translateY(88mm) rotate(-90deg);
       }
       .slip-banner { font-size: 8px; padding: 1mm 1.2mm; letter-spacing: 0.04em; }
       .slip-main { padding: 1.2mm 1.5mm 1mm; gap: 1mm; }
@@ -359,7 +353,7 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       .net-strip-value { font-size: 12px; }
       .slip-meta { font-size: 7px; padding: 0.6mm 0.8mm 0.8mm; line-height: 1.1; }
       @page {
-        size: 70mm 90mm;
+        size: 90mm 70mm;
         margin: 0;
       }
     }
