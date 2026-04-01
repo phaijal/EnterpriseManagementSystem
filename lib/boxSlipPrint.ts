@@ -322,18 +322,34 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         border: none;
         page-break-after: always;
         break-after: page;
+        width: 90mm;
+        height: 70mm;
+        overflow: hidden;
       }
       .slip:last-of-type {
         page-break-after: auto;
         break-after: auto;
       }
       .slip-card {
-        width: 90mm;
-        height: 70mm;
+        width: 88mm;
+        height: 68mm;
         min-height: 0;
         box-shadow: none;
-        border-width: 0.1in;
+        border-width: 0.3mm;
       }
+      .slip-banner { font-size: 8px; padding: 1mm 1.2mm; letter-spacing: 0.04em; }
+      .slip-main { padding: 1.2mm 1.5mm 1mm; gap: 1mm; }
+      .box-block { padding: 0.5mm 0; }
+      .box-label { font-size: 8px; }
+      .box-num { font-size: 18px; }
+      .item-label { font-size: 7px; margin-bottom: 0.5mm; }
+      .item-code { font-size: 10px; line-height: 1.1; }
+      .spec-table { font-size: 8px; }
+      .spec-table th, .spec-table td { padding: 0.4mm 0.6mm; }
+      .net-strip { padding: 0.7mm 1mm; }
+      .net-strip-label { font-size: 7px; }
+      .net-strip-value { font-size: 12px; }
+      .slip-meta { font-size: 7px; padding: 0.6mm 0.8mm 0.8mm; line-height: 1.1; }
       @page {
         size: 90mm 70mm;
         margin: 0;
