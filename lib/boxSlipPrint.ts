@@ -326,18 +326,24 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         width: 70mm;
         height: 90mm;
         overflow: hidden;
+        position: relative;
       }
       .slip:last-of-type {
         page-break-after: auto;
         break-after: auto;
       }
       .slip-card {
-        width: 68mm;
-        height: 88mm;
+        width: 88mm;
+        height: 68mm;
         min-height: 0;
         box-shadow: none;
         border-width: 0.3mm;
         font-family: Arial, Helvetica, sans-serif;
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: top left;
+        transform: translateY(88mm) rotate(-90deg);
       }
       .slip-banner { font-size: 8px; padding: 1mm 1.2mm; letter-spacing: 0.04em; }
       .slip-main { padding: 1.2mm 1.5mm 1mm; gap: 1mm; }
