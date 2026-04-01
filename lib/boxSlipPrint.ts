@@ -123,7 +123,7 @@ function lotAttrSpecRows(s: BoxSlipRow): string {
 }
 
 export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
-  const banner = opts.organizationName?.trim() || "Inventory label";
+  const banner = opts.organizationName?.trim() || "Packing Slip";
 
   const slipPages = opts.slips
     .map(
@@ -133,7 +133,7 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       <header class="slip-banner">${esc(banner)}</header>
       <div class="slip-main">
         <div class="box-block">
-          <span class="box-label">Box</span>
+          <span class="box-label">Box No</span>
           <span class="box-num">${s.boxNumber}</span>
         </div>
         <div class="item-block">
@@ -187,8 +187,8 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
     .slip:last-of-type { border-bottom: none; }
 
     .slip-card {
-      width: 90mm;
-      min-height: 90mm;
+      width: 70mm;
+      min-height: 110mm;
       background: #fff;
       border: 0.12in solid #111;
       display: flex;
@@ -200,11 +200,11 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       background: #111;
       color: #fff;
       text-align: center;
-      font-size: 0.62rem;
+      font-size: 0.54rem;
       font-weight: 700;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      padding: 0.35rem 0.5rem;
+      padding: 0.2rem 0.3rem;
       line-height: 1.2;
     }
 
@@ -213,7 +213,7 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       padding: 0.28in 0.32in 0.2in;
       display: flex;
       flex-direction: column;
-      gap: 0.2in;
+      gap: 0.12in;
     }
 
     .box-block {
@@ -221,18 +221,18 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       align-items: baseline;
       justify-content: center;
       gap: 0.35rem;
-      padding: 0.12in 0;
+      padding: 0.06in 0;
       border-bottom: 2px solid #111;
     }
     .box-label {
-      font-size: 0.75rem;
+      font-size: 0.62rem;
       font-weight: 700;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: #374151;
     }
     .box-num {
-      font-size: 2.35rem;
+      font-size: 1.7rem;
       font-weight: 800;
       line-height: 1;
       letter-spacing: -0.02em;
@@ -248,10 +248,10 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: #6b7280;
-      margin-bottom: 0.12rem;
+      margin-bottom: 0.08rem;
     }
     .item-code {
-      font-size: 0.95rem;
+      font-size: 0.7rem;
       font-weight: 700;
       word-break: break-all;
       line-height: 1.25;
@@ -260,21 +260,21 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
     .spec-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.72rem;
+      font-size: 0.58rem;
       border: 1px solid #111;
     }
     .spec-table th {
       text-align: left;
       font-weight: 600;
       color: #374151;
-      padding: 0.2rem 0.35rem;
+      padding: 0.12rem 0.16rem;
       width: 42%;
       border-bottom: 1px solid #d1d5db;
       border-right: 1px solid #e5e7eb;
       vertical-align: top;
     }
     .spec-table td {
-      padding: 0.2rem 0.35rem;
+      padding: 0.12rem 0.16rem;
       font-weight: 600;
       border-bottom: 1px solid #d1d5db;
       vertical-align: top;
@@ -290,25 +290,25 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       align-items: center;
       justify-content: space-between;
       gap: 0.5rem;
-      padding: 0.28rem 0.4rem;
+      padding: 0.16rem 0.2rem;
       background: #111;
       color: #fff;
       border: 2px solid #111;
     }
     .net-strip-label {
-      font-size: 0.65rem;
+      font-size: 0.56rem;
       font-weight: 700;
       letter-spacing: 0.06em;
       text-transform: uppercase;
     }
     .net-strip-value {
-      font-size: 1.15rem;
+      font-size: 0.9rem;
       font-weight: 800;
       white-space: nowrap;
     }
 
     .slip-meta {
-      font-size: 0.55rem;
+      font-size: 0.48rem;
       color: #6b7280;
       text-align: center;
       padding: 0.25rem 0.35rem 0.35rem;
@@ -328,14 +328,14 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         break-after: auto;
       }
       .slip-card {
-        width: 90mm;
-        height: 90mm;
+        width: 70mm;
+        height: 110mm;
         min-height: 0;
         box-shadow: none;
         border-width: 0.1in;
       }
       @page {
-        size: 90mm 90mm;
+        size: 70mm 110mm;
         margin: 0;
       }
     }
