@@ -194,6 +194,7 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       display: flex;
       flex-direction: column;
       box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+      text-transform: uppercase;
     }
 
     .slip-banner {
@@ -322,8 +323,8 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         border: none;
         page-break-after: always;
         break-after: page;
-        width: 90mm;
-        height: 70mm;
+        width: 70mm;
+        height: 90mm;
         overflow: hidden;
       }
       .slip:last-of-type {
@@ -331,11 +332,12 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         break-after: auto;
       }
       .slip-card {
-        width: 88mm;
-        height: 68mm;
+        width: 68mm;
+        height: 88mm;
         min-height: 0;
         box-shadow: none;
         border-width: 0.3mm;
+        font-family: Arial, Helvetica, sans-serif;
       }
       .slip-banner { font-size: 8px; padding: 1mm 1.2mm; letter-spacing: 0.04em; }
       .slip-main { padding: 1.2mm 1.5mm 1mm; gap: 1mm; }
@@ -351,7 +353,7 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       .net-strip-value { font-size: 12px; }
       .slip-meta { font-size: 7px; padding: 0.6mm 0.8mm 0.8mm; line-height: 1.1; }
       @page {
-        size: 90mm 70mm;
+        size: 70mm 90mm;
         margin: 0;
       }
     }
