@@ -187,8 +187,8 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
     .slip:last-of-type { border-bottom: none; }
 
     .slip-card {
-      width: 70mm;
-      min-height: 110mm;
+      width: 90mm;
+      min-height: 70mm;
       background: #fff;
       border: 0.12in solid #111;
       display: flex;
@@ -328,14 +328,14 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         break-after: auto;
       }
       .slip-card {
-        width: 70mm;
-        height: 110mm;
+        width: 90mm;
+        height: 70mm;
         min-height: 0;
         box-shadow: none;
         border-width: 0.1in;
       }
       @page {
-        size: 70mm 110mm;
+        size: 90mm 70mm;
         margin: 0;
       }
     }
