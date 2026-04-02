@@ -1,6 +1,6 @@
 import { LOT_ATTR_LABELS, parseLotAttrsFromRemarks } from "./itemLotAttributes";
 import { parseRemarkToken } from "./stockEntryRemarks";
-import { UI_LOT_NO } from "./uiLabels";
+import { UI_DENIER, UI_LOT_NO } from "./uiLabels";
 import { WEIGHT_UNIT_LABEL, weightLabel } from "./units";
 
 function esc(s: string) {
@@ -136,19 +136,24 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
           <span class="box-label">Box No</span>
           <span class="box-num">${s.boxNumber}</span>
         </div>
-        <div class="item-block">
-          <span class="item-label">${esc(UI_LOT_NO)}</span>
-          <span class="item-code">${esc(opts.itemCode)}</span>
+        <div class="spec-two-col">
+          <table class="spec-table">
+            ${specRow(UI_DENIER, esc(opts.itemCode))}
+            ${specRow("Grade", esc(s.grade))}
+            ${specRow(UI_LOT_NO, esc(opts.itemCode))}
+            ${specRow(weightLabel("Gross"), `<span class="tabular">${s.grossWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
+            ${specRow("Tare", `<span class="tabular">${s.tareWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
+            ${specRow("Box weight", `<span class="tabular">${s.boxWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
+          </table>
+          <table class="spec-table">
+            ${specRow(LOT_ATTR_LABELS.twist, esc(s.twist?.trim() || "—"))}
+            ${specRow(LOT_ATTR_LABELS.shade, esc(s.shade?.trim() || "—"))}
+            ${specRow(LOT_ATTR_LABELS.quality, esc(s.quality?.trim() || "—"))}
+            ${specRow(LOT_ATTR_LABELS.machineNo, esc(s.machineNo?.trim() || "—"))}
+            ${specRow("No. of cops", `<span class="tabular">${s.numCops}</span>`)}
+            ${specRow("Cop weight", `<span class="tabular">${s.copWeight.toFixed(3)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
+          </table>
         </div>
-        <table class="spec-table">
-          ${specRow("Grade", esc(s.grade))}
-          ${lotAttrSpecRows(s)}
-          ${specRow("No. of cops", `<span class="tabular">${s.numCops}</span>`)}
-          ${specRow("Cop weight", `<span class="tabular">${s.copWeight.toFixed(3)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
-          ${specRow("Box weight", `<span class="tabular">${s.boxWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
-          ${specRow(weightLabel("Gross"), `<span class="tabular">${s.grossWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
-          ${specRow("Tare", `<span class="tabular">${s.tareWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>`)}
-        </table>
         <div class="net-strip" role="status">
           <span class="net-strip-label">${esc(weightLabel("Net"))}</span>
           <span class="net-strip-value tabular">${s.netWeight.toFixed(2)} ${esc(WEIGHT_UNIT_LABEL)}</span>
@@ -239,46 +244,41 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       letter-spacing: -0.02em;
     }
 
-    .item-block {
-      text-align: center;
-    }
-    .item-label {
-      display: block;
-      font-size: 0.55rem;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #6b7280;
-      margin-bottom: 0.08rem;
-    }
-    .item-code {
-      font-size: 0.7rem;
-      font-weight: 700;
-      word-break: break-all;
-      line-height: 1.25;
+    .spec-two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.08in;
+      align-items: start;
     }
 
     .spec-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.58rem;
+      font-size: 0.7rem;
       border: 1px solid #111;
+      table-layout: fixed;
     }
     .spec-table th {
       text-align: left;
-      font-weight: 600;
+      font-weight: 800;
       color: #374151;
       padding: 0.12rem 0.16rem;
-      width: 42%;
+      width: 56%;
       border-bottom: 1px solid #d1d5db;
       border-right: 1px solid #e5e7eb;
-      vertical-align: top;
+      vertical-align: middle;
+      white-space: nowrap;
     }
     .spec-table td {
       padding: 0.12rem 0.16rem;
-      font-weight: 600;
+      font-weight: 800;
       border-bottom: 1px solid #d1d5db;
-      vertical-align: top;
+      vertical-align: middle;
+      height: 1.5rem;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .spec-table tr:last-child th,
     .spec-table tr:last-child td {
@@ -339,19 +339,18 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         border-width: 0.3mm;
         font-family: Arial, Helvetica, sans-serif;
       }
-      .slip-banner { font-size: 8px; padding: 1mm 1.2mm; letter-spacing: 0.04em; }
+      .slip-banner { font-size: 10px; padding: 1mm 1.2mm; letter-spacing: 0.04em; }
       .slip-main { padding: 1.2mm 1.5mm 1mm; gap: 1mm; }
       .box-block { padding: 0.5mm 0; }
-      .box-label { font-size: 8px; }
-      .box-num { font-size: 18px; }
-      .item-label { font-size: 7px; margin-bottom: 0.5mm; }
-      .item-code { font-size: 10px; line-height: 1.1; }
-      .spec-table { font-size: 8px; }
-      .spec-table th, .spec-table td { padding: 0.4mm 0.6mm; }
+      .box-label { font-size: 10px; }
+      .box-num { font-size: 22px; }
+      .spec-two-col { gap: 1mm; }
+      .spec-table { font-size: 10px; }
+      .spec-table th, .spec-table td { padding: 0.45mm 0.65mm; }
       .net-strip { padding: 0.7mm 1mm; }
-      .net-strip-label { font-size: 7px; }
-      .net-strip-value { font-size: 12px; }
-      .slip-meta { font-size: 7px; padding: 0.6mm 0.8mm 0.8mm; line-height: 1.1; }
+      .net-strip-label { font-size: 9px; }
+      .net-strip-value { font-size: 14px; }
+      .slip-meta { font-size: 8px; padding: 0.6mm 0.8mm 0.8mm; line-height: 1.1; }
       @page {
         size: 90mm 70mm;
         margin: 0;

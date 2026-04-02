@@ -7,7 +7,7 @@ export type ChallanBoxLine = {
   tare: number;
   gross: number;
   net: number;
-  /** e.g. 1st, PQ, CLQ */
+  /** e.g. IST, PQ, CLQ */
   grade?: string;
   lot?: string;
   /** Material Receipt Stock Entry — used to lock row on Boxes page while challan is submitted */
