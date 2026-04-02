@@ -17,7 +17,13 @@ import {
   type GradeValue,
   sanitizeLotForRemarks
 } from "@/lib/stockEntryRemarks";
-import { buildBoxSlipsHtmlDocument, printBoxSlipsHtml } from "@/lib/boxSlipPrint";
+import {
+  buildBoxSlipsHtmlDocument,
+  printBoxSlips,
+  printBoxSlipsHtml,
+  type BoxSlipPrintMode,
+  type BoxSlipsDocumentOpts
+} from "@/lib/boxSlipPrint";
 import { UI_LOT_NO } from "@/lib/uiLabels";
 import { WEIGHT_UNIT_LABEL, weightLabel } from "@/lib/units";
 
@@ -104,7 +110,9 @@ export default function AddStockPage() {
   const [printSlipsOnSubmit, setPrintSlipsOnSubmit] = useState(true);
   /** Last generated slips HTML — used for “Print again” if the post-submit print was blocked or cancelled. */
   const [slipsHtmlForPrint, setSlipsHtmlForPrint] = useState<string | null>(null);
+  const [lastSlipDoc, setLastSlipDoc] = useState<BoxSlipsDocumentOpts | null>(null);
   const [companyName, setCompanyName] = useState("");
+  const [slipPrintMode, setSlipPrintMode] = useState<BoxSlipPrintMode>("browser_tab");
 
   const sessionLocked = queue.length > 0;
 
@@ -360,7 +368,7 @@ export default function AddStockPage() {
     setLoading(false);
 
     if (printSlipsOnSubmit) {
-      const html = buildBoxSlipsHtmlDocument({
+      const slipDoc: BoxSlipsDocumentOpts = {
         itemCode,
         organizationName: companyName || undefined,
         printedAt: new Date().toLocaleString(undefined, {
@@ -381,9 +389,11 @@ export default function AddStockPage() {
           quality: lotAttrs.quality || undefined,
           machineNo: lotAttrs.machineNo || undefined
         }))
-      });
+      };
+      const html = buildBoxSlipsHtmlDocument(slipDoc);
       setSlipsHtmlForPrint(html);
-      printBoxSlipsHtml(html);
+      setLastSlipDoc(slipDoc);
+      printBoxSlips(slipDoc, slipPrintMode);
     }
   };
 
@@ -614,6 +624,17 @@ export default function AddStockPage() {
         />
         <span>Print box slips</span>
       </label>
+      <div className="mb-4">
+        <label className="mb-1 block text-sm font-medium text-slate-700">Slip print mode</label>
+        <select
+          value={slipPrintMode}
+          onChange={(e) => setSlipPrintMode(e.target.value as BoxSlipPrintMode)}
+          className="w-full max-w-xs rounded-lg border px-3 py-2 outline-none ring-slate-300 focus:ring"
+        >
+          <option value="browser_tab">Browser preview (new tab)</option>
+          <option value="pdf">Download as PDF</option>
+        </select>
+      </div>
 
       <button
         type="button"
@@ -648,7 +669,13 @@ export default function AddStockPage() {
         <div className="mt-4">
           <button
             type="button"
-            onClick={() => printBoxSlipsHtml(slipsHtmlForPrint)}
+            onClick={() => {
+              if (lastSlipDoc) {
+                printBoxSlips(lastSlipDoc, slipPrintMode);
+              } else {
+                printBoxSlipsHtml(slipsHtmlForPrint);
+              }
+            }}
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
             Print again

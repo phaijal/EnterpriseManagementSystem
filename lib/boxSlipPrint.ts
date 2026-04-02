@@ -34,6 +34,8 @@ export type BoxSlipsDocumentOpts = {
   organizationName?: string;
 };
 
+export type BoxSlipPrintMode = "browser_tab" | "pdf";
+
 /** Minimal row shape from the Boxes (view) page. */
 export type BoxViewRowLike = {
   box: string;
@@ -90,21 +92,22 @@ export function slipRowFromBoxView(
 export function printSingleBoxSlip(opts: {
   row: BoxViewRowLike;
   stockEntryRemarks?: string;
+  printMode?: BoxSlipPrintMode;
 }): void {
   const slip = slipRowFromBoxView(opts.row, opts.stockEntryRemarks);
   if (!slip) {
     window.alert("Could not read a box number for this slip.");
     return;
   }
-  const html = buildBoxSlipsHtmlDocument({
+  const docOpts: BoxSlipsDocumentOpts = {
     itemCode: opts.row.item_code,
     printedAt: new Date().toLocaleString(undefined, {
       dateStyle: "medium",
       timeStyle: "short"
     }),
     slips: [slip]
-  });
-  printBoxSlipsHtml(html);
+  };
+  printBoxSlips(docOpts, opts.printMode ?? "browser_tab");
 }
 
 /**
@@ -181,37 +184,36 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
     .slip {
       display: flex;
       justify-content: center;
-      padding: 16px;
-      border-bottom: 1px solid #cbd5e1;
+      padding: 0;
+      border-bottom: none;
     }
-    .slip:last-of-type { border-bottom: none; }
 
     .slip-card {
       width: 90mm;
-      min-height: 70mm;
+      height: 70mm;
       background: #fff;
-      border: 0.12in solid #111;
+      border: none;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+      box-shadow: none;
       text-transform: uppercase;
     }
 
     .slip-banner {
-      background: #111;
-      color: #fff;
+      background: transparent;
+      color: #000;
       text-align: center;
       font-size: 0.54rem;
       font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      padding: 0.2rem 0.3rem;
+      padding: 0;
       line-height: 1.2;
     }
 
     .slip-main {
       flex: 1;
-      padding: 0.28in 0.32in 0.2in;
+      padding: 0;
       display: flex;
       flex-direction: column;
       gap: 0.12in;
@@ -222,8 +224,8 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       align-items: baseline;
       justify-content: center;
       gap: 0.35rem;
-      padding: 0.06in 0;
-      border-bottom: 2px solid #111;
+      padding: 0;
+      border-bottom: none;
     }
     .box-label {
       font-size: 0.62rem;
@@ -262,7 +264,6 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.58rem;
-      border: 1px solid #111;
     }
     .spec-table th {
       text-align: left;
@@ -270,19 +271,15 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       color: #374151;
       padding: 0.12rem 0.16rem;
       width: 42%;
-      border-bottom: 1px solid #d1d5db;
-      border-right: 1px solid #e5e7eb;
+      border-bottom: none;
+      border-right: none;
       vertical-align: top;
     }
     .spec-table td {
       padding: 0.12rem 0.16rem;
       font-weight: 600;
-      border-bottom: 1px solid #d1d5db;
-      vertical-align: top;
-    }
-    .spec-table tr:last-child th,
-    .spec-table tr:last-child td {
       border-bottom: none;
+      vertical-align: top;
     }
 
     .net-strip {
@@ -291,10 +288,10 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       align-items: center;
       justify-content: space-between;
       gap: 0.5rem;
-      padding: 0.16rem 0.2rem;
-      background: #111;
-      color: #fff;
-      border: 2px solid #111;
+      padding: 0;
+      background: transparent;
+      color: #000;
+      border: none;
     }
     .net-strip-label {
       font-size: 0.56rem;
@@ -312,7 +309,7 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
       font-size: 0.48rem;
       color: #6b7280;
       text-align: center;
-      padding: 0.25rem 0.35rem 0.35rem;
+      padding: 0;
       letter-spacing: 0.02em;
     }
 
@@ -332,26 +329,27 @@ export function buildBoxSlipsHtmlDocument(opts: BoxSlipsDocumentOpts): string {
         break-after: auto;
       }
       .slip-card {
-        width: 88mm;
-        height: 68mm;
+        width: 76mm;
+        height: 56mm;
         min-height: 0;
         box-shadow: none;
-        border-width: 0.3mm;
+        border-width: 0;
+        border: none;
         font-family: Arial, Helvetica, sans-serif;
       }
-      .slip-banner { font-size: 8px; padding: 1mm 1.2mm; letter-spacing: 0.04em; }
-      .slip-main { padding: 1.2mm 1.5mm 1mm; gap: 1mm; }
-      .box-block { padding: 0.5mm 0; }
+      .slip-banner { font-size: 8px; padding: 0; letter-spacing: 0.04em; background: transparent; color: #000; }
+      .slip-main { padding: 0; gap: 1mm; }
+      .box-block { padding: 0; border-bottom: none; }
       .box-label { font-size: 8px; }
       .box-num { font-size: 18px; }
       .item-label { font-size: 7px; margin-bottom: 0.5mm; }
       .item-code { font-size: 10px; line-height: 1.1; }
-      .spec-table { font-size: 8px; }
-      .spec-table th, .spec-table td { padding: 0.4mm 0.6mm; }
-      .net-strip { padding: 0.7mm 1mm; }
+      .spec-table { font-size: 8px; border: none; }
+      .spec-table th, .spec-table td { padding: 0.4mm 0.6mm; border: none; }
+      .net-strip { padding: 0; background: transparent; border: none; color: #000; }
       .net-strip-label { font-size: 7px; }
       .net-strip-value { font-size: 12px; }
-      .slip-meta { font-size: 7px; padding: 0.6mm 0.8mm 0.8mm; line-height: 1.1; }
+      .slip-meta { font-size: 7px; padding: 0; line-height: 1.1; }
       @page {
         size: 90mm 70mm;
         margin: 0;
@@ -365,59 +363,41 @@ ${slipPages}
 </html>`;
 }
 
-function printBoxSlipsHtmlViaHiddenIframe(html: string): void {
-  const iframe = document.createElement("iframe");
-  iframe.title = "Print preview";
-  iframe.setAttribute("aria-hidden", "true");
-  Object.assign(iframe.style, {
-    position: "fixed",
-    left: "-9999px",
-    top: "0",
-    width: "8.5in",
-    height: "11in",
-    border: "0",
-    margin: "0"
-  });
+function openHtmlInNewTab(html: string): void {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    window.alert("Pop-up blocked. Please allow pop-ups to open print preview/PDF.");
+    URL.revokeObjectURL(url);
+    return;
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 90_000);
+}
 
-  let cleaned = false;
-  const cleanup = () => {
-    if (cleaned) return;
-    cleaned = true;
-    iframe.remove();
-  };
-
-  let printScheduled = false;
-  const runPrint = () => {
-    const win = iframe.contentWindow;
-    if (!win) {
-      cleanup();
-      return;
-    }
-    win.addEventListener("afterprint", cleanup, { once: true });
-    window.setTimeout(cleanup, 90_000);
-    try {
-      win.focus();
-      win.print();
-    } catch {
-      cleanup();
-    }
-  };
-
-  iframe.addEventListener("load", () => {
-    const doc = iframe.contentWindow?.document;
-    if (!doc?.body?.querySelector(".slip") || printScheduled) return;
-    printScheduled = true;
-    window.setTimeout(runPrint, 100);
-  });
-
-  document.body.appendChild(iframe);
-  iframe.srcdoc = html;
+function withAutoPrint(html: string): string {
+  const script = `<script>
+    window.addEventListener("load", function() {
+      setTimeout(function() {
+        try { window.print(); } catch {}
+      }, 150);
+    });
+  </script>`;
+  return html.replace("</body>", `${script}</body>`);
 }
 
 /**
- * Prints via a hidden iframe on the current page only (no window.open, no new tab, no pop-up prompts).
- * Call from a direct button click so print() is allowed after async work.
+ * Default mode opens preview in a new tab.
  */
 export function printBoxSlipsHtml(html: string): void {
-  printBoxSlipsHtmlViaHiddenIframe(html);
+  openHtmlInNewTab(html);
+}
+
+export function printBoxSlips(opts: BoxSlipsDocumentOpts, printMode: BoxSlipPrintMode): void {
+  if (printMode === "browser_tab") {
+    printBoxSlipsHtml(buildBoxSlipsHtmlDocument(opts));
+    return;
+  }
+  // Opens the print dialog in a new tab so users can choose "Save as PDF".
+  openHtmlInNewTab(withAutoPrint(buildBoxSlipsHtmlDocument(opts)));
 }

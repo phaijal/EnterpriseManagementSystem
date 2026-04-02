@@ -8,7 +8,7 @@ import { fetchAppWarehouseName } from "@/lib/finishedGoodsWarehouse";
 import { fetchDoctypeFieldNames } from "@/lib/frappeMeta";
 import { weightLabel } from "@/lib/units";
 import { fetchSubmittedChallanLockMap } from "@/lib/challanLocks";
-import { printSingleBoxSlip } from "@/lib/boxSlipPrint";
+import { printSingleBoxSlip, type BoxSlipPrintMode } from "@/lib/boxSlipPrint";
 import {
   buildLotAttrsRemarkSuffix,
   parseLotAttrsFromRemarks
@@ -564,14 +564,14 @@ export default function BoxesPage() {
     }
   };
 
-  const handlePrintSlip = useCallback(async (row: BoxRow) => {
+  const handlePrintSlip = useCallback(async (row: BoxRow, printMode: BoxSlipPrintMode) => {
     setSlipPrinting(row.stock_entry);
     try {
       const res = await api.get<{ data?: { remarks?: string } }>(
         `/api/resource/Stock Entry/${encodeURIComponent(row.stock_entry)}`
       );
       const remarks = res.data?.data?.remarks;
-      printSingleBoxSlip({ row, stockEntryRemarks: remarks });
+      printSingleBoxSlip({ row, stockEntryRemarks: remarks, printMode });
     } catch (error) {
       alert(getApiErrorMessage(error, "Failed to load stock entry for slip."));
     } finally {
@@ -820,11 +820,25 @@ export default function BoxesPage() {
                         <button
                           type="button"
                           disabled={loading || slipPrinting === row.stock_entry}
-                          onClick={() => void handlePrintSlip(row)}
+                          onClick={() => void handlePrintSlip(row, "browser_tab")}
                           className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
                         >
                           {slipPrinting === row.stock_entry ? "…" : "Print slip"}
                         </button>
+                        <select
+                          defaultValue=""
+                          disabled={loading || slipPrinting === row.stock_entry}
+                          onChange={(e) => {
+                            const mode = e.target.value as BoxSlipPrintMode | "";
+                            if (!mode) return;
+                            void handlePrintSlip(row, mode);
+                            e.currentTarget.value = "";
+                          }}
+                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100"
+                        >
+                          <option value="">More</option>
+                          <option value="pdf">Download PDF</option>
+                        </select>
                         {row.docstatus !== 1 ? (
                           editingEntry === row.stock_entry ? (
                             <>
