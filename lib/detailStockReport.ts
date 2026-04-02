@@ -27,7 +27,7 @@ export function emptyGradeBlock(): GradeBlock {
 }
 
 /**
- * Map stored grade (e.g. 1st, PQ, CLQ) to a report column.
+ * Map stored grade (e.g. IST, PQ, CLQ) to a report column.
  * Unknown values go to "CLQ / Other".
  */
 export function normalizeReportGrade(raw: string | undefined | null): ReportGradeKey {

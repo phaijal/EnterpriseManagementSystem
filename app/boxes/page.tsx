@@ -126,7 +126,7 @@ export default function BoxesPage() {
       cops: typeof row.cops === "number" ? row.cops : 0,
       tare_weight: typeof row.tare_weight === "number" ? row.tare_weight : 0,
       gross_weight: typeof row.gross_weight === "number" ? row.gross_weight : 0,
-      grade: row.grade !== "—" ? row.grade : "1ST"
+      grade: row.grade !== "—" ? row.grade : "IST"
     };
   };
 
