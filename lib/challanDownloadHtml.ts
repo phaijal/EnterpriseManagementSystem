@@ -12,6 +12,24 @@ function esc(s: string) {
     .replace(/"/g, "&quot;");
 }
 
+function challanNumberShort(name: string): string {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return "—";
+  const last = trimmed.split("-").pop()?.trim() || trimmed;
+  return last || trimmed;
+}
+
+function formatChallanDate(input?: string): string {
+  const raw = (input || "").trim();
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = String(d.getFullYear());
+  return `${day}-${month}-${year}`;
+}
+
 function partyBlockHtml(heading: string, party: PartyPrintDetails, fallbackName?: string) {
   const displayName = party.name && party.name !== "—" ? party.name : fallbackName || "—";
   const addr = party.addressLines.map((line) => `<div class="addr-line">${esc(line)}</div>`).join("");
@@ -87,6 +105,8 @@ export function buildChallanHtmlDocument(opts: {
     gstin: "",
     addressLines: []
   };
+  const challanNo = challanNumberShort(opts.name);
+  const challanDate = formatChallanDate(opts.posting_date);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -206,14 +226,13 @@ export function buildChallanHtmlDocument(opts: {
 
     <section class="meta-grid" aria-label="Parties and challan meta">
       <div class="meta-left">
-        <div class="row"><span class="lbl">GST NO :</span><span class="val mono">${esc(companyParty.gstin || "—")}</span></div>
         <div class="row"><span class="lbl">Party Name :</span><span class="val">${esc(customerParty.name || opts.customer || "—")}</span></div>
         <div class="row"><span class="lbl">Address :</span><span class="val">${esc((customerParty.addressLines || []).join(", ") || "—")}</span></div>
         <div class="row"><span class="lbl">GST NO :</span><span class="val mono">${esc(customerParty.gstin || "—")}</span></div>
       </div>
       <div class="meta-right">
-        <div class="row"><span class="lbl">CHALLAN NO :</span><span class="val mono">${esc(opts.name)}</span></div>
-        <div class="row"><span class="lbl">CHALLAN DATE :</span><span class="val">${esc(opts.posting_date || "—")}</span></div>
+        <div class="row"><span class="lbl">CHALLAN NO :</span><span class="val mono">${esc(challanNo)}</span></div>
+        <div class="row"><span class="lbl">CHALLAN DATE :</span><span class="val">${esc(challanDate)}</span></div>
         <div class="row"><span class="lbl">L.R.NO :</span><span class="val">${esc(opts.lr_no || "—")}</span></div>
         <div class="row"><span class="lbl">VEHICLE NO :</span><span class="val">${esc(opts.vehicle_no || "—")}</span></div>
         <div class="row"><span class="lbl">TRANSPORT :</span><span class="val">${esc(opts.transport || "—")}</span></div>
